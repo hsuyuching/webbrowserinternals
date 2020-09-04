@@ -39,6 +39,7 @@ class Response:
         return output + "]"
 
 def stripoutUrl(url: str) -> Url:
+    assert url.find("://")!=-1, "URL should include ://"
     scheme, url = url.split("://", 1)
     assert scheme in ["http", "https"], "Unknown scheme {}".format(scheme)
 
@@ -85,11 +86,12 @@ def request(url: Url):
     s.close()
 
     return Response(version, status, explanation, headers, body)
-    # return headers, body
 
 def show(body):
+    start_idx = body.find("<body")
+    end_idx = body.find("/body>")
     in_angle = False
-    for c in body:
+    for c in body[start_idx:end_idx]:
         if c == "<":
             in_angle = True
         elif c == ">":
@@ -107,4 +109,15 @@ if __name__ == "__main__":
     print("-"*30)
 
     response = request(request_url)
-    print(response)
+    if 300<= response.status < 400:
+        for i in range(3):
+            print("Redirect URL:\n" + response.headers["location"])
+            redirectUrl = stripoutUrl(response.headers["location"])
+            redirectResponse = request(redirectUrl)
+            if redirectResponse.status == 200:
+                print(redirectResponse)
+                break
+    else:        
+        print(response)
+    # print("Only show the content in the <body> tag\n")
+    # show(response.body)
