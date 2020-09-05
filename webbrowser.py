@@ -64,7 +64,7 @@ class Browser:
         self.canvas.delete("all")
         for x, y, c in self.display_list:
             if y > self.scroll + self.HEIGHT: continue
-            if y < self.scroll: continue
+            if y + self.VSTEP < self.scroll: continue
             self.canvas.create_text(x, y-self.scroll, text=c)
         
     def layout(self, text):
