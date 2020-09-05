@@ -1,7 +1,7 @@
 import sys
 import ssl
 import socket
-
+import tkinter
 
 class Url:
     scheme: str
@@ -38,6 +38,47 @@ class Response:
             output += f"\n\t({header}: {self.headers[header]})"
         return output + "]"
 
+class Browser:
+    def __init__(self):
+        self.WIDTH = 800
+        self.HEIGHT = 600
+        self.SCROLL_STEP = 100
+        self.scroll = 0
+        self.HSTEP = 13
+        self.VSTEP = 18
+        
+        self.window = tkinter.Tk()
+        self.canvas = tkinter.Canvas(
+            self.window, 
+            width=self.WIDTH,
+            height=self.HEIGHT
+        )
+        self.canvas.pack()
+        self.window.bind("<Down>", self.scrolldown)
+
+    def scrolldown(self, e):
+        self.scroll += self.SCROLL_STEP
+        self.render()
+
+    def render(self):
+        self.canvas.delete("all")
+        for x, y, c in self.display_list:
+            if y > self.scroll + self.HEIGHT: continue
+            if y < self.scroll: continue
+            self.canvas.create_text(x, y-self.scroll, text=c)
+        
+    def layout(self, text):
+        
+        x, y = self.HSTEP, self.VSTEP
+        self.display_list = []
+        for c in text:
+            self.display_list.append((x,y,c))
+            x += self.HSTEP  # keep move right
+            if x >= self.WIDTH - self.HSTEP:
+                y += self.VSTEP  # next line (move down)
+                x = self.HSTEP   # reset to left
+        self.render()
+
 def stripoutUrl(url: str) -> Url:
     assert url.find("://")!=-1, "URL should include ://"
     scheme, url = url.split("://", 1)
@@ -52,7 +93,6 @@ def stripoutUrl(url: str) -> Url:
         port = int(port)
     return Url(scheme, host, port, path)
     
-
 def request(url: Url):
     # Connect
     s = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
@@ -99,7 +139,22 @@ def show(body):
         elif not in_angle:
             print(c, end="")
 
+def lex(body):
+    text = ""
+    in_angle = False
+    for c in body:
+        if c == "<":
+            in_angle = True
+        elif c == ">":
+            in_angle = False
+        elif not in_angle:
+            text += c
+    return text
+
+
 if __name__ == "__main__":
+
+    # Download a web page
     request_url = sys.argv[1]
     print("Provided URL: %s" %request_url)
 
@@ -119,5 +174,9 @@ if __name__ == "__main__":
                 break
     else:        
         print(response)
-    # print("Only show the content in the <body> tag\n")
-    # show(response.body)
+    
+    # Draw into window
+    browser = Browser()
+    content = lex(response.body)
+    browser.layout(content)
+    tkinter.mainloop()
