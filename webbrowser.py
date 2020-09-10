@@ -46,32 +46,58 @@ class Browser:
         self.scroll = 0
         self.HSTEP = 13
         self.VSTEP = 18
-        
+        self.display_list = []
+        self.text = ""
+        self.font = 12
         self.window = tkinter.Tk()
         self.canvas = tkinter.Canvas(
             self.window, 
             width=self.WIDTH,
             height=self.HEIGHT
         )
-        self.canvas.pack()
+        self.canvas.pack(expand=True, fill="both")
         self.window.bind("<Down>", self.scrolldown)
+        self.window.bind("<Up>", self.scrollup)
+        self.window.bind("<Configure>", self.windowresize)
+        self.window.bind("+", self.zoomin)
+        self.window.bind("-", self.zoomout)
 
     def scrolldown(self, e):
         self.scroll += self.SCROLL_STEP
         self.render()
+
+    def scrollup(self, e):
+        self.scroll -= self.SCROLL_STEP
+        self.render()
+
+    def windowresize(self, e):
+        self.WIDTH = e.width
+        self.HEIGHT = e.height
+        self.layout(self.text)
+    
+    def zoomin(self, e):
+        self.font += 2
+        self.layout(self.text)
+        
+    def zoomout(self, e):
+        self.font -= 2
+        self.layout(self.text)
 
     def render(self):
         self.canvas.delete("all")
         for x, y, c in self.display_list:
             if y > self.scroll + self.HEIGHT: continue
             if y + self.VSTEP < self.scroll: continue
-            self.canvas.create_text(x, y-self.scroll, text=c)
+            self.canvas.create_text(x, y-self.scroll, text=c, font=self.font)
         
     def layout(self, text):
-        
-        x, y = self.HSTEP, self.VSTEP
+        self.text = text
         self.display_list = []
-        for c in text:
+        x, y = self.HSTEP, self.VSTEP
+        for c in self.text:
+            if c == "\n":
+                y += 25
+                x = 100
             self.display_list.append((x,y,c))
             x += self.HSTEP  # keep move right
             if x >= self.WIDTH - self.HSTEP:
@@ -108,7 +134,7 @@ def request(url: Url):
     s.send(f"{request_path}{request_host}".encode("utf8"))
 
     # Parse Version / Status / Explanation
-    response = s.makefile("r", encoding="latin1", newline="\r\n")
+    response = s.makefile("r", encoding="utf8", newline="\r\n")
     statusline = response.readline()
     version, status, explanation = statusline.split(" ", 2)
     status = int(status)
@@ -137,6 +163,18 @@ def show(body):
         elif c == ">":
             in_angle = False
         elif not in_angle:
+            print(c, end="")
+
+def getDivident(body):
+    tag = "DIVIDEND_AND_YIELD-value"
+    start_idx = body.find(tag) + len(tag)
+    in_angle = False
+    for c in body[start_idx:start_idx+100]:
+        if c == ">":
+            in_angle = True
+        elif c == "<":
+            in_angle = False
+        elif in_angle:
             print(c, end="")
 
 def lex(body):
@@ -170,13 +208,14 @@ if __name__ == "__main__":
             redirectUrl = stripoutUrl(response.headers["location"])
             redirectResponse = request(redirectUrl)
             if redirectResponse.status == 200:
-                print(redirectResponse)
-                break
-    else:        
-        print(response)
-    
-    # Draw into window
+                response = redirectResponse
+                break   
+    print(response)
+    print("-"*30)
+    # getDivident(response.body)
+    # # Draw into window
     browser = Browser()
     content = lex(response.body)
+    
     browser.layout(content)
     tkinter.mainloop()
