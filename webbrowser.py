@@ -2,7 +2,9 @@ import sys
 import ssl
 import socket
 import tkinter
+import tkinter.font
 
+HSTEP, VSTEP = 13, 18
 class Url:
     scheme: str
     host: str
@@ -44,12 +46,12 @@ class Browser:
         self.HEIGHT = 600
         self.SCROLL_STEP = 100
         self.scroll = 0
-        self.HSTEP = 13
-        self.VSTEP = 18
         self.display_list = []
         self.text = ""
-        self.font = 12
+
         self.window = tkinter.Tk()
+        
+        self.window.title("Yu-Ching Hsu's Browser")
         self.canvas = tkinter.Canvas(
             self.window, 
             width=self.WIDTH,
@@ -61,6 +63,8 @@ class Browser:
         self.window.bind("<Configure>", self.windowresize)
         self.window.bind("+", self.zoomin)
         self.window.bind("-", self.zoomout)
+
+        self.gif_grinFace = tkinter.PhotoImage(file='resize_griningFace.gif')
 
     def scrolldown(self, e):
         self.scroll += self.SCROLL_STEP
@@ -76,34 +80,68 @@ class Browser:
         self.layout(self.text)
     
     def zoomin(self, e):
-        self.font += 2
+        # self.font.size += 2
         self.layout(self.text)
-        
+
     def zoomout(self, e):
-        self.font -= 2
+        # self.font.size -= 2
         self.layout(self.text)
 
     def render(self):
         self.canvas.delete("all")
-        for x, y, c in self.display_list:
-            if y > self.scroll + self.HEIGHT: continue
-            if y + self.VSTEP < self.scroll: continue
-            self.canvas.create_text(x, y-self.scroll, text=c, font=self.font)
-        
-    def layout(self, text):
-        self.text = text
+        for self.x, self.y, c in self.display_list:
+            if self.y > self.scroll + self.HEIGHT: continue
+            if self.y + VSTEP < self.scroll: continue
+            if c == ':)':
+                self.canvas.create_image(self.x, self.y-self.scroll, image=self.gif_grinFace)
+                continue
+            self.canvas.create_text(self.x, self.y-self.scroll, text=c, font=self.font, anchor='nw')
+            self.x += self.font.measure(c)
+    
+    def layout(self, tokens):
+        self.display_list = Layout(tokens).display_list
+
+class Layout:
+    def __init__(self, tokens):
         self.display_list = []
-        x, y = self.HSTEP, self.VSTEP
-        for c in self.text:
-            if c == "\n":
-                y += 25
-                x = 100
-            self.display_list.append((x,y,c))
-            x += self.HSTEP  # keep move right
-            if x >= self.WIDTH - self.HSTEP:
-                y += self.VSTEP  # next line (move down)
-                x = self.HSTEP   # reset to left
+        self.x, self.y = HSTEP, VSTEP
+        self.weight = "normal"
+        self.style = "roman"
+        self.size = 16
+        for tok in tokens:
+            self.token(tok)
+
+    def text(self, text):
+        self.font = tkinter.font.Font(
+            family="Times",
+            size=16,
+            weight = self.weight,
+            slant = self.style
+        )
+        for word in text.split():
+            w = self.font.measure(word)
+            if self.x + w >= self.WIDTH - HSTEP:
+                self.y += self.font.metrics("linespace") * 1.2
+                self.x = HSTEP
+            self.display_list.append((self.x, self.y, word, self.font))
+            self.x += w + self.font.measure(" ")
+
+    def token(self, tok):
+        if isinstance(tok, Text):
+            self.text(tok)
+        elif tok.tag == "i": self.style = "italic"
+        elif tok.tag == "/i": self.style = "roman"
+        elif tok.tag == "b": self.weight = "bold"
+        elif tok.tag == "/b": self.weight = "normal"
         self.render()
+
+class Text:
+    def __init__(self, text):
+        self.text = text
+
+class Tag:
+    def __init__(self, tag):
+        self.tag = tag
 
 def stripoutUrl(url: str) -> Url:
     assert url.find("://")!=-1, "URL should include ://"
@@ -178,16 +216,23 @@ def getDivident(body):
             print(c, end="")
 
 def lex(body):
+    out = []
     text = ""
-    in_angle = False
+    in_tag = False
     for c in body:
         if c == "<":
-            in_angle = True
+            in_tag = True
+            if text: out.append(Text(text))
+            text = ""
         elif c == ">":
-            in_angle = False
-        elif not in_angle:
+            in_tag = False
+            out.append(Tag(text))
+            text = ""
+        else:
             text += c
-    return text
+    if not in_tag and text:
+        out.append(Text(text))
+    return out
 
 
 if __name__ == "__main__":
