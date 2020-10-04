@@ -3,29 +3,13 @@ import tkinter.font
 import re
 
 import layout
-
-
-SELF_CLOSING_TAGS = [
-    "area", "base", "br", "col", "embed", "hr", "img", "input",
-    "link", "meta", "param", "source", "track", "wbr",
-]
-HEAD_TAGS = [
-    "base", "basefont", "bgsound", "noscript",
-    "link", "meta", "title", "style", "script",
-]
-
-ENTITIES = {
-    "&lt;": "<",
-    "&gt;": ">",
-    "&quot;": '"',
-    "&amp;": "&"
-}
+from globalDeclare import Variables
 
 
 class Text:
     def __init__(self, text):
-        if text in ENTITIES:
-            text = ENTITIES[text]
+        if text in Variables.ENTITIES:
+            text = Variables.ENTITIES[text]
         self.text = text
 
 class Tag:
@@ -86,7 +70,7 @@ class ParseTree:
                 if not currently_open: 
                     return node
                 currently_open[-1].children.append(node)
-            elif tok.tag in SELF_CLOSING_TAGS:
+            elif tok.tag in Variables.SELF_CLOSING_TAGS:
                 node = ElementNode(tok.tag, tok.attributes)
                 currently_open[-1].children.append(node)
 
@@ -110,7 +94,7 @@ class ParseTree:
             if open_tags == [] and tag != "html":
                 currently_open.append(ElementNode("html", {}))
             elif open_tags == ["html"] and tag not in ["head", "body", "/html"]:
-                if tag in HEAD_TAGS:
+                if tag in Variables.HEAD_TAGS:
                     implicit = "head"
                 else:
                     implicit = "body"

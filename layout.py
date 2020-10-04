@@ -2,13 +2,12 @@ import parse
 import tkinter
 from parse import TextNode, ElementNode
 
-WIDTH, HEIGHT = 800, 600
-HSTEP, VSTEP = 13, 18
+from globalDeclare import Variables
 
 class Layout:
     def __init__(self, tree):
         self.display_list = []
-        self.x, self.y = HSTEP, VSTEP
+        self.x, self.y = Variables.HSTEP, Variables.VSTEP
         self.line = []
         self.weight = "normal"
         self.style = "roman"
@@ -45,7 +44,7 @@ class Layout:
         text = text.replace("&quot;", '"')
         for word in text.split():
             w = font.measure(word)
-            if self.x + w >= WIDTH - HSTEP:
+            if self.x + w >= Variables.WIDTH - Variables.HSTEP:
                 # prepare newline, ans reset self.x ans self.line
                 self.flush()
             self.line.append((self.x, word, font))
@@ -69,7 +68,7 @@ class Layout:
             self.display_list.append((x, y, word, font))
         
         # reset the self.x and self.line
-        self.x = HSTEP
+        self.x = Variables.HSTEP
         self.line = []
 
     def handle_open_tag(self, tag, attributes):
@@ -105,7 +104,7 @@ class Layout:
             self.weight = "normal"
         elif tag == "p":
             self.flush()
-            self.y += VSTEP
+            self.y += Variables.VSTEP
         elif tag == 'h1' and self.title:
             self.size -= 10
             self.weight = "normal"
@@ -126,11 +125,10 @@ class Layout:
 
     def centerline(self):
         # [ |what |is |a |font?  ]
-        global WIDTH
         freespace = 0
         if self.line != []:
             x, word, font = self.line[-1]
-            freespace = (WIDTH - x - font.measure(word))//2
+            freespace = (Variables.WIDTH - x - font.measure(word))//2
         for i in range(len(self.line)):
             self.line[i] = (self.line[i][0]+freespace, \
                             self.line[i][1],\
