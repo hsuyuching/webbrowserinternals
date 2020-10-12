@@ -34,6 +34,7 @@ class DrawRect:
             width=0,
             fill=self.color,
         )
+        
 class DocumentLayout:
     def __init__(self, node):
         self.node = node

@@ -7,7 +7,6 @@ from globalDeclare import Variables
 class Browser:
     def __init__(self):
         self.scroll = 0
-        # self.text = ""
         self.window = tkinter.Tk()
         self.window.title("Yu-Ching Hsu's Browser")
         self.canvas = tkinter.Canvas( self.window, width = Variables.WIDTH, height = Variables.HEIGHT)
@@ -34,10 +33,6 @@ class Browser:
         Variables.HEIGHT = e.height
         self.layout(self.tree)
     
-    # def layout(self, nodes):
-    #     self.display_list = layout.Layout(nodes).display_list
-    #     self.text = nodes
-    #     self.render()
     def layout(self, tree):
         self.tree = tree
         document = layout.DocumentLayout(tree)
