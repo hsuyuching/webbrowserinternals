@@ -8,8 +8,6 @@ from globalDeclare import Variables
 
 class Text:
     def __init__(self, text):
-        if text in Variables.ENTITIES:
-            text = Variables.ENTITIES[text]
         self.text = text
 
 class Tag:
@@ -20,7 +18,7 @@ class Tag:
         for attrpair in parts[1:]:
             if "=" in attrpair:
                 key, value = attrpair.split("=", 1)
-                self.attributes[key.lower()] = value
+                self.attributes[key.lower()] = value[1:-1]
             else:
                 self.attributes[attrpair.lower()] = ""
         
@@ -29,6 +27,12 @@ class ElementNode:
         self.tag = tag
         self.children = []
         self.attributes = attributes
+
+        self.style = {}
+        for pair in self.attributes.get("style", "").split(";"):
+            if ":" not in pair: continue
+            prop, val = pair.split(":")
+            self.style[prop.strip().lower()] = val.strip()
 
     def __repr__(self):
         return "<" + self.tag + ">"
@@ -51,6 +55,10 @@ def lex(body):
             text = ""
         else:
             text += c
+            for entity in Variables.ENTITIES:
+                idx = text.find(entity)
+                if idx >= 0:
+                    text = text[:idx] + Variables.ENTITIES[entity] + text[idx+len(entity):]
     if not in_tag and text:
         out.append(Text(text))
     return out
@@ -90,7 +98,6 @@ class ParseTree:
         tag = tok.tag if isinstance(tok, Tag) else None
         while True:
             open_tags = [node.tag for node in currently_open]
-            # print(open_tags, tag)
             if open_tags == [] and tag != "html":
                 currently_open.append(ElementNode("html", {}))
             elif open_tags == ["html"] and tag not in ["head", "body", "/html"]:

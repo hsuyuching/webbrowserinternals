@@ -117,9 +117,7 @@ def main():
 
     # Draw into window
     mybrowser = browser.Browser()
-    tokens = parse.lex(response.body)
-    nodes = parse.ParseTree().parse(tokens)
-    mybrowser.layout(nodes)
+    mybrowser.load(request_url)
     tkinter.mainloop()
 
 if __name__ == "__main__":

@@ -34,27 +34,50 @@ class DrawRect:
             width=0,
             fill=self.color,
         )
-        
+
 class DocumentLayout:
     def __init__(self, node):
         self.node = node
         self.parent = None
         self.children = []
 
+        self.mt = self.mr = self.mb = self.ml = -1
+        self.bt = self.br = self.bb = self.bl = -1
+        self.pt = self.pr = self.pb = self.pl = -1
+
     def layout(self):
+        self.mt = px(self.node.style.get("margin-top", "0px"))
+        self.bt = px(self.node.style.get("border-top-width", "0px"))
+        self.pt = px(self.node.style.get("padding-top", "0px"))
+
+        self.mr = px(self.node.style.get("margin-right", "0px"))
+        self.br = px(self.node.style.get("border-right-width", "0px"))
+        self.pr = px(self.node.style.get("padding-right", "0px"))
+
+        self.mb = px(self.node.style.get("margin-bottom", "0px"))
+        self.bb = px(self.node.style.get("border-bottom-width", "0px"))
+        self.pb = px(self.node.style.get("padding-bottom", "0px"))
+
+        self.ml = px(self.node.style.get("margin-left", "0px"))
+        self.bl = px(self.node.style.get("border-left-width", "0px"))
+        self.pl = px(self.node.style.get("padding-left", "0px"))
+
+
         self.w = Variables.WIDTH
 
         child = BlockLayout(self.node, self)
-        child.x = self.x = 0
-        child.y = self.y = 0
+        child.x = self.x = 10
+        child.y = self.y = 10
         self.children.append(child)
         child.layout()
 
-        # child.layout()
         self.h = child.h
 
     def draw(self, to):
         self.children[0].draw(to)
+
+
+
 
 class BlockLayout:
     def __init__(self, node, parent):
@@ -62,12 +85,31 @@ class BlockLayout:
         self.parent = parent
         self.children = []
 
-        # self.x = -1
-        # self.y = -1
         self.w = -1
         self.h = -1
-    
+
+        # margin, border, padding
+        self.mt = self.mr = self.mb = self.ml = -1
+        self.bt = self.br = self.bb = self.bl = -1
+        self.pt = self.pr = self.pb = self.pl = -1
+
     def layout(self):
+        self.mt = px(self.node.style.get("margin-top", "0px"))
+        self.bt = px(self.node.style.get("border-top-width", "0px"))
+        self.pt = px(self.node.style.get("padding-top", "0px"))
+
+        self.mr = px(self.node.style.get("margin-right", "0px"))
+        self.br = px(self.node.style.get("border-right-width", "0px"))
+        self.pr = px(self.node.style.get("padding-right", "0px"))
+
+        self.mb = px(self.node.style.get("margin-bottom", "0px"))
+        self.bb = px(self.node.style.get("border-bottom-width", "0px"))
+        self.pb = px(self.node.style.get("padding-bottom", "0px"))
+
+        self.ml = px(self.node.style.get("margin-left", "0px"))
+        self.bl = px(self.node.style.get("border-left-width", "0px"))
+        self.pl = px(self.node.style.get("padding-left", "0px"))
+
 
         if self.has_block_children():
             for child in self.node.children:
@@ -76,13 +118,18 @@ class BlockLayout:
         else:
             self.children.append(InlineLayout(self.node, self))
 
-        self.w = self.parent.w
+        self.w = self.parent.w - self.parent.pl - self.parent.pr \
+        - self.parent.bl - self.parent.br \
+        - self.ml - self.mr
+
+        self.y += self.mt
+        self.x += self.ml
         y = self.y
         for child in self.children:
-            child.x = self.x
+            child.x = self.x + self.pl + self.pr + self.bl + self.br
             child.y = y
             child.layout()
-            y += child.h
+            y += child.h + child.mt + child.mb
         self.h = y - self.y
 
     def has_block_children(self):
@@ -90,7 +137,7 @@ class BlockLayout:
             if isinstance(child, TextNode):
                 if not child.text.isspace():
                     return False
-            elif child.tag in Variables.INLINE_ELEMENTS:
+            elif child.style.get("display", "block") == "inline":
                 return False
         return True
 
@@ -107,19 +154,37 @@ class InlineLayout:
         self.parent = parent
         self.children = []
 
-        # self.x = -1
-        # self.y = -1
         self.w = -1
         self.h = -1
 
+        self.mt = self.mr = self.mb = self.ml = -1
+        self.bt = self.br = self.bb = self.bl = -1
+        self.pt = self.pr = self.pb = self.pl = -1
+
     def layout(self):
-        
+        self.mt = px(self.node.style.get("margin-top", "0px"))
+        self.bt = px(self.node.style.get("border-top-width", "0px"))
+        self.pt = px(self.node.style.get("padding-top", "0px"))
+
+        self.mr = px(self.node.style.get("margin-right", "0px"))
+        self.br = px(self.node.style.get("border-right-width", "0px"))
+        self.pr = px(self.node.style.get("padding-right", "0px"))
+
+        self.mb = px(self.node.style.get("margin-bottom", "0px"))
+        self.bb = px(self.node.style.get("border-bottom-width", "0px"))
+        self.pb = px(self.node.style.get("padding-bottom", "0px"))
+
+        self.ml = px(self.node.style.get("margin-left", "0px"))
+        self.bl = px(self.node.style.get("border-left-width", "0px"))
+        self.pl = px(self.node.style.get("padding-left", "0px"))
+
         self.display_list = []
 
         self.cx = self.x
         self.cy = self.y
 
-        self.w = self.parent.w
+        self.w = self.parent.w - self.parent.pl - self.parent.pr \
+            - self.parent.bl - self.parent.br
 
         self.weight = "normal"
         self.style = "roman"
@@ -135,29 +200,27 @@ class InlineLayout:
     
         self.h = self.cy - self.y
 
+    def font(self, node):
+        bold = node.style["font-weight"]
+        italic = node.style["font-style"]
+        if italic == "normal": italic = "roman"
+        size = int(px(node.style.get("font-size")) * .75)
+        return tkinter.font.Font(size=size, weight=bold, slant=italic)
+
     def draw(self, to):
-        # to.extend(self.display_list)
         for x, y, word, font in self.display_list:
             to.append(DrawText(x, y, word, font))
     
-    def recurse(self, tree):
-        if isinstance(tree, TextNode):
-            self.text(tree.text)
+    def recurse(self, node):
+        if isinstance(node, TextNode):
+            self.text(node)
         else:
-            self.handle_open_tag(tree.tag, tree.attributes)
-            for child in tree.children:
+            for child in node.children:
                 self.recurse(child)
-            self.handle_close_tag(tree.tag)
             
-    def text(self, text):
-        font = tkinter.font.Font(
-            family="Times",
-            size=self.size,
-            weight = self.weight,
-            slant = self.style
-        )
-        text = text.replace("&quot;", '"')
-        for word in text.split():
+    def text(self, node):
+        font = self.font(node)
+        for word in node.text.split():
             w = font.measure(word)
             if self.cx + w >= Variables.WIDTH - Variables.HSTEP:
                 # prepare newline, ans reset self.cx ans self.line
@@ -254,3 +317,124 @@ class InlineLayout:
             self.line[i] = (self.line[i][0]+ 4 * self.line[i][2].measure(" "), \
                             self.line[i][1],\
                             self.line[i][2])
+
+class TagSelector:
+    def __init__(self, tag):
+        self.tag = tag
+    
+    def matches(self, node):
+        return self.tag in node.tag.split()
+
+    def priority(self):
+        return 1
+
+class ClassSelector:
+    def __init__(self, cls):
+        self.cls = cls
+
+    def matches(self, node):
+        return self.cls in node.attributes.get("class", "").split()
+
+    def priority(self):
+        return 16
+
+class IdSelector:
+    def __init__(self, id):
+        self.id = id
+    def matches(self, node):
+        return self.id in node.attributes.get("id", "").split()
+    def priority(self):
+        return 256
+
+class CSSParser:
+    def __init__(self, s):
+        self.s = s
+
+    # Call by connect.py, driver of CSSParser
+    def parse(self):
+        rules, _ = self.file(0)
+        return rules
+
+    def value(self, i):
+        j = i
+        while self.s[j].isalnum() or self.s[j] in "-.":
+            j += 1
+        return self.s[i:j], j
+
+    def whitespace(self, i):
+        j = i
+        while j < len(self.s) and self.s[j].isspace():
+            j += 1
+        return None, j
+    
+    def pair(self, i):
+        prop, i = self.value(i)
+        _, i = self.whitespace(i)
+        assert self.s[i] == ":"
+        _, i = self.whitespace(i + 1)
+        val, i = self.value(i)
+        _, i = self.whitespace(i + 1)
+        return (prop.lower(), val), i
+    
+    def body(self, i):
+        pairs = {}
+        assert self.s[i] == "{"
+        _, i = self.whitespace(i+1)
+        while True:
+            if i > len(self.s): break
+            if self.s[i] == "}": break
+
+            try:
+                (prop, val), i = self.pair(i)
+                pairs[prop] = val
+                _, i = self.whitespace(i)
+                assert self.s[i] == ";"
+                _, i = self.whitespace(i+1)
+            except AssertionError:
+                while self.s[i] not in [";", "}"]:
+                    i += 1
+                if self.s[i] == ";":
+                    _, i = self.whitespace(i + 1)
+        assert self.s[i] == "}"
+        return pairs, i+1
+    
+    def selector(self, i):
+        if self.s[i] == "#":
+            name, i = self.value(i+1)
+            return IdSelector(name), i
+        elif self.s[i] == ".":
+            name, i = self.value(i+1)
+            return ClassSelector(name), i
+        else:
+            name, i = self.value(i)
+            return TagSelector(name.lower()), i
+
+    def rule(self, i):
+        selector, i = self.selector(i)
+        _, i = self.whitespace(i)
+        body, i = self.body(i)
+        return (selector, body), i
+
+    def file(self, i):
+        rules = []
+        _, i = self.whitespace(i)
+        while i < len(self.s):
+            try:
+                rule, i = self.rule(i)
+            except AssertionError:
+                while i < len(self.s) and self.s[i] != "}":
+                    i += 1
+                i += 1
+            else:
+                rules.append(rule)
+            _, i = self.whitespace(i)
+        rules.sort(key=lambda x: x[0].priority(), reverse=True)
+        return rules, i
+    
+    
+def px(s):
+    if s.endswith("px"):
+        return int(s[:-2])
+    else:
+        return 0
+

@@ -2,7 +2,10 @@ import tkinter
 import layout
 import parse
 
+from connect import request, stripoutUrl
 from globalDeclare import Variables
+from layout import CSSParser
+from parse import TextNode, ElementNode
 
 class Browser:
     def __init__(self):
@@ -17,8 +20,6 @@ class Browser:
         self.gif_grinFace = tkinter.PhotoImage(file='resize_griningFace.gif')
 
     def scrolldown(self, e):
-        # self.scroll += Variables.SCROLL_STEP
-        # self.render()
         self.scroll = self.scroll + Variables.SCROLL_STEP
         self.scroll = min(self.scroll, self.max_y)
         self.scroll = max(0, self.scroll)
@@ -62,8 +63,68 @@ class Browser:
             if cmd.y2 < self.scroll: continue
             cmd.draw(self.scroll, self.canvas)
 
+    def load(self, url):
+        response = request(url)
+        header, body = response.headers, response.body
+        tokens = parse.lex(body)
+        nodes = parse.ParseTree().parse(tokens)
+
+        with open("browser.css") as f:
+            browser_style = f.read()
+            rules = CSSParser(browser_style).parse()
+        for link in find_links(nodes, []):
+            cssurl = relative_url(link, url)
+            cssurl = stripoutUrl(cssurl)
+            response = request(cssurl)
+            header, body = response.headers, response.body
+            rules.extend(CSSParser(body).parse())
+
+        rules.sort(key=lambda t:t[0].priority(),
+            reverse=True)
+        style(nodes, rules, None)
+        self.layout(nodes)
+
 def _print_tree(tree, indent_space):
         print(f'{indent_space} {tree}')
         if isinstance(tree, parse.ElementNode):   
             for child in tree.children:    
                 _print_tree(child, indent_space + '  ')
+
+def find_links(node, lst):
+    if not isinstance(node, ElementNode): return
+    if node.tag == "link" and \
+       node.attributes.get("rel", "") == "stylesheet" and \
+       "href" in node.attributes:
+        lst.append(node.attributes["href"])
+    for child in node.children:
+        find_links(child, lst)
+    return lst
+
+def relative_url(url, current):
+    current = current.scheme+"://"+current.host+current.path
+    if "://" in url:
+        return url
+    elif url.startswith("/"):
+        return "/".join(current.split("/")[:3]) + url
+    else:
+        return current.rsplit("/", 1)[0] + "/" + url
+
+def style(node, rules, parent):
+    if isinstance(node, TextNode):
+        node.style = parent.style
+    else:
+        for selector, pairs in rules:
+            if selector.matches(node):
+                for property in pairs:
+                    if property not in node.style:
+                        node.style[property] = pairs[property]
+    
+        for property, default in Variables.INHERITED_PROPERTIES.items():
+            if property not in node.style:
+                if parent:
+                    node.style[property] = parent.style[property]
+                else:
+                    node.style[property] = default
+        
+        for child in node.children:
+            style(child, rules, node)
