@@ -11,6 +11,10 @@ b { font-weight: bold; }
 small { font-size: 12px; }
 big { font-size: 20px; }
 
+
+h1 { font-weight: bold; font-size: 30px;}
+a { color: blue; }
+
 a { display: inline; }
 em { display: inline; }
 strong { display: inline; }

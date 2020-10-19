@@ -23,4 +23,5 @@ class Variables:
     "font-style": "normal",
     "font-weight": "normal",
     "font-size": "16px",
+    "color": "black"
     }

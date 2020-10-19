@@ -17,7 +17,22 @@ class Browser:
         self.window.bind("<Down>", self.scrolldown)
         self.window.bind("<Up>", self.scrollup)
         self.window.bind("<Configure>", self.windowresize)
+        self.window.bind("<Button-1>", self.handle_click)
         self.gif_grinFace = tkinter.PhotoImage(file='resize_griningFace.gif')
+
+    def handle_click(self, e):
+        x, y = e.x - 60, e.y + self.scroll
+        obj = find_layout(x, y, self.document)
+        if not obj: return
+        elt = obj.node
+        while elt and not is_link(elt):
+            elt = elt.parent
+        if elt:
+            temp = self.url
+            if isinstance(self.url, str):
+                temp = stripoutUrl(self.url)
+            url = relative_url(elt.attributes["href"], temp)
+            self.load(url)
 
     def scrolldown(self, e):
         self.scroll = self.scroll + Variables.SCROLL_STEP
@@ -36,34 +51,27 @@ class Browser:
     
     def layout(self, tree):
         self.tree = tree
-        document = layout.DocumentLayout(tree)
-        document.layout()
+        self.document = layout.DocumentLayout(tree)
+        self.document.layout()
         self.display_list = []
-        document.draw(self.display_list)
+        self.document.draw(self.display_list)
         self.render()
-        self.max_y = document.h
+        self.max_y = self.document.h
 
         # _print_tree(self.tree, "  ")
 
-    
-    # def render(self):
-    #     self.canvas.delete("all")
-    #     for x, y, w, font in self.display_list:
-    #         if y > self.scroll + Variables.HEIGHT: continue
-    #         if y + Variables.VSTEP < self.scroll: continue
-    #         if w == ':)':
-    #             self.canvas.create_image(x, y-self.scroll, image=self.gif_grinFace)
-    #             continue
-    #         self.canvas.create_text(x, y-self.scroll, text=w, font=font, anchor='nw')
-    #         x += font.measure(w)
     def render(self):
         self.canvas.delete("all")
         for cmd in self.display_list:
             if cmd.y1 > self.scroll + Variables.HEIGHT: continue
             if cmd.y2 < self.scroll: continue
-            cmd.draw(self.scroll, self.canvas)
+            cmd.draw(self.scroll - 60, self.canvas)
 
     def load(self, url):
+        self.url = url
+        print("new url:", url)
+        if isinstance(url, str):
+            url = stripoutUrl(url)
         response = request(url)
         header, body = response.headers, response.body
         tokens = parse.lex(body)
@@ -72,6 +80,7 @@ class Browser:
         with open("browser.css") as f:
             browser_style = f.read()
             rules = CSSParser(browser_style).parse()
+
         for link in find_links(nodes, []):
             cssurl = relative_url(link, url)
             cssurl = stripoutUrl(cssurl)
@@ -100,7 +109,16 @@ def find_links(node, lst):
         find_links(child, lst)
     return lst
 
-def relative_url(url, current):
+def find_layout(x, y, tree):
+    for child in reversed(tree.children):
+        result = find_layout(x, y, child)
+        if result: return result
+    if tree.x <= x < tree.x + tree.w and \
+       tree.y <= y < tree.y + tree.h:
+        return tree
+
+def relative_url(url, current) -> str: #current: Url
+    # print("***", current)
     current = current.scheme+"://"+current.host+current.path
     if "://" in url:
         return url
@@ -108,6 +126,10 @@ def relative_url(url, current):
         return "/".join(current.split("/")[:3]) + url
     else:
         return current.rsplit("/", 1)[0] + "/" + url
+
+def is_link(node):
+    return isinstance(node, ElementNode) \
+        and node.tag == "a" and "href" in node.attributes
 
 def style(node, rules, parent):
     if isinstance(node, TextNode):

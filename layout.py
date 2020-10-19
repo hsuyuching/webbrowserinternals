@@ -3,13 +3,75 @@ import tkinter
 from parse import TextNode, ElementNode
 
 from globalDeclare import Variables
+class LineLayout:
+    def __init__(self, node, parent):
+        self.node = node
+        self.parent = parent
+        self.children = []
+        self.cx = 0
+
+    def append(self, child):
+        self.children.append(child)
+        child.parent = self
+        self.cx += child.w + child.font.measure(" ")
+
+    def draw(self, to):
+        for child in self.children:
+            child.draw(to)
+
+    def layout(self):
+        # task: compute x, y, h
+        if not self.children:
+            self.w = self.parent.w
+            self.h = 0
+            return
+        
+        self.w = self.parent.w
+        # align the words along the line
+        metrics = [child.font.metrics() for child in self.children]
+        max_ascent = max([metric["ascent"] for metric in metrics])
+        max_descent = max([metric["descent"] for metric in metrics])
+        baseline = 1.2 * max_ascent + self.y
+
+        # add all words to self.display_list with x, y, word, font
+        cx = self.x
+        for child in self.children:
+            y = baseline - child.font.metrics("ascent")
+            child.y = y
+            child.x = cx
+            cx += child.w + child.font.measure(" ")
+
+        # reset the self.cx and self.line
+        self.h = 1.2*max_ascent + 1.2*max_descent
+
+class TextLayout:
+    def __init__(self, node, word):
+        self.node = node
+        self.children = []
+        self.word = word
+
+    def layout(self):
+        weight = self.node.style["font-weight"]
+        style = self.node.style["font-style"]
+        if style == "normal": style = "roman"
+        size = int(px(self.node.style["font-size"]) * .75)
+        self.font = tkinter.font.Font(size=size, weight=weight, slant=style)
+
+        self.w = self.font.measure(self.word)
+        self.h = self.font.metrics('linespace')
+
+    def draw(self, to):
+        color = self.node.style["color"]
+        to.append(DrawText(self.x, self.y, self.word, self.font, color))
+
 class DrawText:
-    def __init__(self, x1, y1, text, font):
+    def __init__(self, x1, y1, text, font, color):
         self.x1 = x1
         self.y1 = y1
         self.text = text
         self.font = font
         self.y2 = y1 + font.metrics("linespace")
+        self.color = color
 
     def draw(self, scroll, canvas):
         canvas.create_text(
@@ -17,6 +79,7 @@ class DrawText:
             text=self.text,
             font=self.font,
             anchor='nw',
+            fill=self.color
         )
     
 class DrawRect:
@@ -143,8 +206,9 @@ class BlockLayout:
 
     def draw(self, to):
         if self.node.tag == "pre":
+            # print(self.node.tag, self.node.attributes)
             x2, y2 = self.x + self.w, self.y + self.h
-            to.append(DrawRect(self.x, self.y, x2, y2, "gray"))
+            to.append(DrawRect(self.x, self.y, x2, y2, self.node.attributes.get("background-color", "gray")))
         for child in self.children:
             child.draw(to)
 
@@ -152,7 +216,7 @@ class InlineLayout:
     def __init__(self, node, parent):
         self.node = node
         self.parent = parent
-        self.children = []
+        self.children = [LineLayout(self.node, self)]
 
         self.w = -1
         self.h = -1
@@ -199,6 +263,7 @@ class InlineLayout:
         self.flush()
     
         self.h = self.cy - self.y
+        self.children.pop()
 
     def font(self, node):
         bold = node.style["font-weight"]
@@ -208,8 +273,10 @@ class InlineLayout:
         return tkinter.font.Font(size=size, weight=bold, slant=italic)
 
     def draw(self, to):
-        for x, y, word, font in self.display_list:
-            to.append(DrawText(x, y, word, font))
+        # for x, y, word, font, color in self.display_list:
+        #     to.append(DrawText(x, y, word, font, color))
+        for child in self.children:
+            child.draw(to)
     
     def recurse(self, node):
         if isinstance(node, TextNode):
@@ -219,35 +286,20 @@ class InlineLayout:
                 self.recurse(child)
             
     def text(self, node):
-        font = self.font(node)
         for word in node.text.split():
-            w = font.measure(word)
-            if self.cx + w >= Variables.WIDTH - Variables.HSTEP:
-                # prepare newline, ans reset self.cx ans self.line
+            child = TextLayout(node, word)
+            child.layout()
+            if self.children[-1].cx + child.w > self.w:
                 self.flush()
-            self.line.append((self.cx, word, font))
-            self.cx += w + font.measure(" ")
+            self.children[-1].append(child)
 
     def flush(self):
-        if not self.line: return
-
-        # align the words along the line
-        metrics = [font.metrics() for _,_,font in self.line]
-        max_ascent = abs(max([metric["ascent"] for metric in metrics]))
-        max_descent = abs(max([metric["descent"] for metric in metrics]))
-        baseline = self.cy + 1.2 * max_ascent
-
-        # add all words to self.display_list with x, y, word, font
-        for x, word, font in self.line:
-            y = baseline - font.metrics("ascent")
-            if self.supFlag:
-                y -= 5
-            self.display_list.append((x, y, word, font))
-        
-        # reset the self.cx and self.line
-        self.cy = baseline + abs(1.2 * max_descent)
-        self.cx = Variables.HSTEP
-        self.line = []
+        child = self.children[-1]
+        child.x = self.x
+        child.y = self.cy
+        child.layout()
+        self.cy += child.h
+        self.children.append(LineLayout(self.node, self))
 
     def handle_open_tag(self, tag, attributes):
             if tag == "i":
@@ -357,7 +409,7 @@ class CSSParser:
 
     def value(self, i):
         j = i
-        while self.s[j].isalnum() or self.s[j] in "-.":
+        while self.s[j].isalnum() or self.s[j] in "-.#":
             j += 1
         return self.s[i:j], j
 
@@ -373,7 +425,7 @@ class CSSParser:
         assert self.s[i] == ":"
         _, i = self.whitespace(i + 1)
         val, i = self.value(i)
-        _, i = self.whitespace(i + 1)
+        _, i = self.whitespace(i)
         return (prop.lower(), val), i
     
     def body(self, i):
