@@ -25,3 +25,4 @@ class Variables:
     "font-size": "16px",
     "color": "black"
     }
+    ADDR_START = 85

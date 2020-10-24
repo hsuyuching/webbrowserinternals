@@ -69,7 +69,7 @@ def request(url: Url):
     # Request
     request_path = f"GET {url.path} HTTP/1.0\r\n"
     request_host = f"Host: {url.host}\r\n\r\n"
-    print(f"{request_path}{request_host}")
+    # print(f"{request_path}{request_host}")
     s.send(f"{request_path}{request_host}".encode("utf8"))
 
     # Parse Version / Status / Explanation

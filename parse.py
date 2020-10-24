@@ -42,6 +42,9 @@ class TextNode:
     def __init__(self, text, parent):
         self.text = text
         self.parent = parent
+        
+    def __repr__(self):
+        return self.text
 
 def lex(body):
     '''classity with Text (take out < and >) and Tag -> out: list'''

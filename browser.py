@@ -18,21 +18,74 @@ class Browser:
         self.window.bind("<Up>", self.scrollup)
         self.window.bind("<Configure>", self.windowresize)
         self.window.bind("<Button-1>", self.handle_click)
+        self.window.bind("<Key>", self.keypress)
+        self.window.bind("<Return>", self.pressenter)
+        self.window.bind("<BackSpace>", self.backspace)
         self.gif_grinFace = tkinter.PhotoImage(file='resize_griningFace.gif')
+        self.history = []
+        self.future = []
+        self.curridx = 0
+        self.focus = None
+        self.address_bar = ""
+
+    def backspace(self, e):
+        if self.focus == "address bar":
+            if self.address_bar:
+                self.address_bar = self.address_bar[:-1]
+                self.render()
+    
+    def pressenter(self, e):
+        if self.focus == "address bar":
+            self.focus = None
+            self.future = []
+            self.load(self.address_bar)
+
+    def keypress(self, e):
+        if self.focus == "address bar":
+            if len(e.char) == 1 and 0x20 <= ord(e.char) < 0x7f:
+                self.address_bar += e.char
+                self.render()
 
     def handle_click(self, e):
-        x, y = e.x - 60, e.y + self.scroll
-        obj = find_layout(x, y, self.document)
-        if not obj: return
-        elt = obj.node
-        while elt and not is_link(elt):
-            elt = elt.parent
-        if elt:
-            temp = self.url
-            if isinstance(self.url, str):
-                temp = stripoutUrl(self.url)
-            url = relative_url(elt.attributes["href"], temp)
-            self.load(url)
+        self.focus = None
+        if e.y < 60: # Browser chrome
+            # click "back" button
+            if 10 <= e.x < 35 and 10 <= e.y < 50:
+                self.go_back()
+            # click "forward" button
+            elif 45 <= e.x < 70 and 10 <= e.y < 50:
+                self.go_forward()
+            # click address bar
+            elif 80 <= e.x < 800 and 10 <= e.y < 50:
+                self.focus = "address bar"
+                self.address_bar = ""
+                self.render()
+
+        else: # page content
+            x, y = e.x, e.y - 60 + self.scroll
+            obj = find_layout(x, y, self.document)
+            if not obj: 
+                return
+            elt = obj.node
+            while elt and not is_link(elt):
+                elt = elt.parent
+            if elt:
+                temp = self.url
+                if isinstance(self.url, str):
+                    temp = stripoutUrl(self.url)
+                url = relative_url(elt.attributes["href"], temp)
+                self.future = []
+                self.load(url)
+
+    def go_back(self):
+        if len(self.history) > 1: # if no previous page, then not enter
+            self.future.append(self.history.pop())
+            back = self.history.pop()
+            self.load(back)
+
+    def go_forward(self):
+        if self.future:
+            self.load(self.future.pop())
 
     def scrolldown(self, e):
         self.scroll = self.scroll + Variables.SCROLL_STEP
@@ -67,11 +120,42 @@ class Browser:
             if cmd.y2 < self.scroll: continue
             cmd.draw(self.scroll - 60, self.canvas)
 
+        # address bar
+        self.canvas.create_rectangle(80, 0, 800, 60, width=0, fill='light gray')
+        self.canvas.create_rectangle(Variables.ADDR_START, 10, 790, 50)
+        
+        font = tkinter.font.Font(family="Courier", size=20)
+        url = self.url
+        if not isinstance(url, str):
+            url = self.url.scheme+"://"+self.url.host+self.url.path
+        self.canvas.create_text(Variables.ADDR_START+5, 15, anchor='nw', text=self.address_bar, font=font)
+        
+        # back button
+        if len(self.history)>1: button_color = "black"
+        else: button_color = "gray"
+        self.canvas.create_rectangle(10, 10, 35, 50)
+        self.canvas.create_polygon(15, 30, 30, 20, 30, 40, fill=button_color)
+        
+        # forward button x1,y1,x2,y2
+        if self.future: button_color = "black"
+        else: button_color = "gray"
+        self.canvas.create_rectangle(45, 10, 70, 50)
+        self.canvas.create_polygon(50, 20, 65, 30, 50, 40, fill=button_color)
+        if self.focus == "address bar":
+            w = font.measure(self.address_bar)
+            self.canvas.create_line(Variables.ADDR_START+5 + w, 15, Variables.ADDR_START+5 + w, 45)
+
     def load(self, url):
         self.url = url
         print("new url:", url)
         if isinstance(url, str):
+            self.address_bar = url
             url = stripoutUrl(url)
+        else: 
+            self.address_bar = url.scheme+"://"+url.host+url.path
+        
+        self.history.append(url)
+
         response = request(url)
         header, body = response.headers, response.body
         tokens = parse.lex(body)
@@ -118,7 +202,6 @@ def find_layout(x, y, tree):
         return tree
 
 def relative_url(url, current) -> str: #current: Url
-    # print("***", current)
     current = current.scheme+"://"+current.host+current.path
     if "://" in url:
         return url
