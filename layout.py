@@ -3,6 +3,32 @@ import tkinter
 from parse import TextNode, ElementNode
 
 from globalDeclare import Variables
+class InputLayout:
+    def __init__(self, node):
+        self.node = node
+        self.children = []
+
+    def layout(self):
+        self.w = 200
+        self.h = 20
+
+        weight = self.node.style["font-weight"]
+        style = self.node.style["font-style"]
+        if style == "normal": style = "roman"
+        size = int(px(self.node.style["font-size"]) * .75)
+        self.font = tkinter.font.Font(size=size, weight=weight, slant=style)
+
+    def draw(self, to):
+        x1, x2 = self.x, self.x + self.w
+        y1, y2 = self.y, self.y + self.h
+        to.append(DrawRect(x1, y1, x2, y2, "light gray"))
+
+        text = self.node.attributes.get("value", "")
+        # print(text)
+        color = self.node.style["color"]
+        to.append(DrawText(self.x, self.y, text, self.font, color))
+    
+
 class LineLayout:
     def __init__(self, node, parent):
         self.node = node
@@ -32,7 +58,7 @@ class LineLayout:
         max_ascent = max([metric["ascent"] for metric in metrics])
         max_descent = max([metric["descent"] for metric in metrics])
         baseline = 1.2 * max_ascent + self.y
-
+        
         # add all words to self.display_list with x, y, word, font
         cx = self.x
         for child in self.children:
@@ -273,8 +299,6 @@ class InlineLayout:
         return tkinter.font.Font(size=size, weight=bold, slant=italic)
 
     def draw(self, to):
-        # for x, y, word, font, color in self.display_list:
-        #     to.append(DrawText(x, y, word, font, color))
         for child in self.children:
             child.draw(to)
     
@@ -282,8 +306,11 @@ class InlineLayout:
         if isinstance(node, TextNode):
             self.text(node)
         else:
-            for child in node.children:
-                self.recurse(child)
+            if node.tag == "input":
+                self.input(node)
+            else:
+                for child in node.children:
+                    self.recurse(child)
             
     def text(self, node):
         for word in node.text.split():
@@ -292,6 +319,13 @@ class InlineLayout:
             if self.children[-1].cx + child.w > self.w:
                 self.flush()
             self.children[-1].append(child)
+    
+    def input(self, node):
+        child = InputLayout(node)
+        child.layout()
+        if self.children[-1].cx + child.w > self.w:
+            self.flush()
+        self.children[-1].append(child)
 
     def flush(self):
         child = self.children[-1]

@@ -4,7 +4,7 @@ import parse
 
 from connect import request, stripoutUrl
 from globalDeclare import Variables
-from layout import CSSParser
+from layout import CSSParser, InputLayout
 from parse import TextNode, ElementNode
 
 class Browser:
@@ -41,10 +41,16 @@ class Browser:
             self.load(self.address_bar)
 
     def keypress(self, e):
+        if len(e.char) != 1 or ord(e.char) < 0x20 or 0x7f <= ord(e.char):
+            return
+        if not self.focus: return
         if self.focus == "address bar":
             if len(e.char) == 1 and 0x20 <= ord(e.char) < 0x7f:
                 self.address_bar += e.char
                 self.render()
+        elif isinstance(self.focus, InputLayout):
+            self.focus.node.attributes["value"] += e.char
+            self.layout(self.document.node)
 
     def handle_click(self, e):
         self.focus = None
@@ -64,9 +70,15 @@ class Browser:
         else: # page content
             x, y = e.x, e.y - 60 + self.scroll
             obj = find_layout(x, y, self.document)
-            if not obj: 
-                return
+            if not obj: return
             elt = obj.node
+
+            # press on <input>
+            if is_input(elt): 
+                self.click_input(elt)
+                self.focus = obj
+                self.layout(self.document.node)
+
             while elt and not is_link(elt):
                 elt = elt.parent
             if elt:
@@ -76,6 +88,10 @@ class Browser:
                 url = relative_url(elt.attributes["href"], temp)
                 self.future = []
                 self.load(url)
+
+    def click_input(self, elt):
+        # elt = obj.node
+        elt.attributes["value"] = ""
 
     def go_back(self):
         if len(self.history) > 1: # if no previous page, then not enter
@@ -129,7 +145,7 @@ class Browser:
         if not isinstance(url, str):
             url = self.url.scheme+"://"+self.url.host+self.url.path
         self.canvas.create_text(Variables.ADDR_START+5, 15, anchor='nw', text=self.address_bar, font=font)
-        
+    
         # back button
         if len(self.history)>1: button_color = "black"
         else: button_color = "gray"
@@ -144,6 +160,15 @@ class Browser:
         if self.focus == "address bar":
             w = font.measure(self.address_bar)
             self.canvas.create_line(Variables.ADDR_START+5 + w, 15, Variables.ADDR_START+5 + w, 45)
+
+        # <input> cursor
+        if isinstance(self.focus, InputLayout):
+            text = self.focus.node.attributes.get("value", "")
+            x = self.focus.x + self.focus.font.measure(text)
+            y = self.focus.y
+            # add 60px to make up the address bar
+            self.canvas.create_line(x, y+60, x, y + self.focus.h + 60)
+
 
     def load(self, url):
         self.url = url
@@ -209,6 +234,12 @@ def relative_url(url, current) -> str: #current: Url
         return "/".join(current.split("/")[:3]) + url
     else:
         return current.rsplit("/", 1)[0] + "/" + url
+
+def is_input(elt):
+    if isinstance(elt, ElementNode) and \
+        elt.tag == "input":
+        return True
+    return False
 
 def is_link(node):
     return isinstance(node, ElementNode) \

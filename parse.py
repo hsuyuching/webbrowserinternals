@@ -1,7 +1,7 @@
 import tkinter
 import tkinter.font
 import re
-
+import shlex
 import layout
 from globalDeclare import Variables
 
@@ -12,13 +12,14 @@ class Text:
 
 class Tag:
     def __init__(self, text):
-        parts = text.split()
+        # keep space between the quotes
+        parts = shlex.split(text)
         self.tag = parts[0].lower()
         self.attributes = {}
         for attrpair in parts[1:]:
             if "=" in attrpair:
                 key, value = attrpair.split("=", 1)
-                self.attributes[key.lower()] = value[1:-1]
+                self.attributes[key.lower()] = value
             else:
                 self.attributes[attrpair.lower()] = ""
         
@@ -42,7 +43,7 @@ class TextNode:
     def __init__(self, text, parent):
         self.text = text
         self.parent = parent
-        
+
     def __repr__(self):
         return self.text
 
