@@ -15,6 +15,9 @@ big { font-size: 20px; }
 h1 { font-weight: bold; font-size: 30px;}
 a { color: blue; }
 
+input { display: inline;}
+button { display: inline;}
+
 a { display: inline; }
 em { display: inline; }
 strong { display: inline; }

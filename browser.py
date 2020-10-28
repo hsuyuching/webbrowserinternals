@@ -33,12 +33,23 @@ class Browser:
             if self.address_bar:
                 self.address_bar = self.address_bar[:-1]
                 self.render()
+        elif self.focus:
+            text = self.focus.node.attributes.get("value", "")
+            if text != "":
+                self.focus.node.attributes["value"] = text[:-1]
+                self.layout(self.document.node)
+                self.render()
     
     def pressenter(self, e):
         if self.focus == "address bar":
             self.focus = None
             self.future = []
             self.load(self.address_bar)
+        elif self.focus: # is an obj (form)
+            self.submit_form(self.focus.node)
+            self.focus = None
+            self.render()
+
 
     def keypress(self, e):
         if len(e.char) != 1 or ord(e.char) < 0x20 or 0x7f <= ord(e.char):
@@ -79,15 +90,40 @@ class Browser:
                 self.focus = obj
                 self.layout(self.document.node)
 
-            while elt and not is_link(elt):
+            while elt and not is_link(elt) and elt.tag != "button":
                 elt = elt.parent
-            if elt:
+            if not elt:
+                pass
+            elif is_link(elt):
                 temp = self.url
                 if isinstance(self.url, str):
                     temp = stripoutUrl(self.url)
                 url = relative_url(elt.attributes["href"], temp)
                 self.future = []
                 self.load(url)
+            elif elt.tag == "button":
+                self.submit_form(elt)
+
+    def submit_form(self, elt):
+        while elt and elt.tag != 'form':
+            elt = elt.parent
+        if not elt: return
+        inputs = find_inputs(elt, [])
+        body = ""
+        for input in inputs:
+            name = input.attributes['name']
+            value = input.attributes.get('value', '')
+            body += "&" + name + "="
+            body += value.replace(" ", "%20")
+        body = body[1:]
+     
+        if isinstance(self.url, str):
+            self.url = stripoutUrl(self.url)
+        url = relative_url(elt.attributes['action'], self.url)
+
+        self.load(url, body)
+
+
 
     def click_input(self, elt):
         # elt = obj.node
@@ -120,6 +156,7 @@ class Browser:
     
     def layout(self, tree):
         self.tree = tree
+    
         self.document = layout.DocumentLayout(tree)
         self.document.layout()
         self.display_list = []
@@ -170,9 +207,9 @@ class Browser:
             self.canvas.create_line(x, y+60, x, y + self.focus.h + 60)
 
 
-    def load(self, url):
+    def load(self, url, body=None): # body: encode form for params
         self.url = url
-        print("new url:", url)
+
         if isinstance(url, str):
             self.address_bar = url
             url = stripoutUrl(url)
@@ -181,7 +218,7 @@ class Browser:
         
         self.history.append(url)
 
-        response = request(url)
+        response = request(url, body)
         header, body = response.headers, response.body
         tokens = parse.lex(body)
         nodes = parse.ParseTree().parse(tokens)
@@ -201,12 +238,6 @@ class Browser:
             reverse=True)
         style(nodes, rules, None)
         self.layout(nodes)
-
-def _print_tree(tree, indent_space):
-        print(f'{indent_space} {tree}')
-        if isinstance(tree, parse.ElementNode):   
-            for child in tree.children:    
-                _print_tree(child, indent_space + '  ')
 
 def find_links(node, lst):
     if not isinstance(node, ElementNode): return
@@ -264,3 +295,17 @@ def style(node, rules, parent):
         
         for child in node.children:
             style(child, rules, node)
+
+def find_inputs(elt, out):
+    if not isinstance(elt, ElementNode): return
+    if elt.tag == 'input' and 'name' in elt.attributes:
+        out.append(elt)
+    for child in elt.children:
+        find_inputs(child, out)
+    return out
+
+def _print_tree(tree, indent_space):
+        print(f'{indent_space} {tree}')
+        if isinstance(tree, parse.ElementNode):   
+            for child in tree.children:    
+                _print_tree(child, indent_space + '  ')

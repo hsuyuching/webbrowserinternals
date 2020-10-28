@@ -21,13 +21,19 @@ class InputLayout:
     def draw(self, to):
         x1, x2 = self.x, self.x + self.w
         y1, y2 = self.y, self.y + self.h
-        to.append(DrawRect(x1, y1, x2, y2, "light gray"))
+        bgcolor = "light gray" if self.node.tag == "input" else "yellow"
+        to.append(DrawRect(x1, y1, x2, y2, bgcolor))
+        
+        text = ""
+        if self.node.tag == "input":
+            text = self.node.attributes.get("value", "")
+        else:
+            text = self.node.children[0].text
 
-        text = self.node.attributes.get("value", "")
-        # print(text)
         color = self.node.style["color"]
         to.append(DrawText(self.x, self.y, text, self.font, color))
-    
+
+
 
 class LineLayout:
     def __init__(self, node, parent):
@@ -58,7 +64,7 @@ class LineLayout:
         max_ascent = max([metric["ascent"] for metric in metrics])
         max_descent = max([metric["descent"] for metric in metrics])
         baseline = 1.2 * max_ascent + self.y
-        
+
         # add all words to self.display_list with x, y, word, font
         cx = self.x
         for child in self.children:
@@ -232,7 +238,6 @@ class BlockLayout:
 
     def draw(self, to):
         if self.node.tag == "pre":
-            # print(self.node.tag, self.node.attributes)
             x2, y2 = self.x + self.w, self.y + self.h
             to.append(DrawRect(self.x, self.y, x2, y2, self.node.attributes.get("background-color", "gray")))
         for child in self.children:
@@ -306,7 +311,7 @@ class InlineLayout:
         if isinstance(node, TextNode):
             self.text(node)
         else:
-            if node.tag == "input":
+            if node.tag == "input" or node.tag == "button":
                 self.input(node)
             else:
                 for child in node.children:

@@ -104,7 +104,6 @@ class ParseTree:
         tag = tok.tag if isinstance(tok, Tag) else None
         while True:
             open_tags = [node.tag for node in currently_open]
-            # print(open_tags, tag)
             if open_tags == [] and tag != "html":
                 currently_open.append(ElementNode("html", {}, None))
             elif open_tags == ["html"] and tag not in ["head", "body", "/html"]:
