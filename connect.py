@@ -50,6 +50,10 @@ def stripoutUrl(url: str) -> Url:
     assert scheme in ["http", "https"], "Unknown scheme {}".format(scheme)
 
     port = 80 if scheme == "http" else 443
+    # connect to form server
+    if url.rsplit("/")[1] in ["submit", "add"]: 
+        port = 8000
+
     host, path = url.split("/", 1)
     path = "/" + path
     
@@ -58,7 +62,8 @@ def stripoutUrl(url: str) -> Url:
         port = int(port)
     return Url(scheme, host, port, path)
     
-def request(url: Url):
+def request(url: Url, payload=None):
+    method = "POST" if payload else "GET"
     # Connect
     s = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     s.connect((url.host, url.port))
@@ -67,10 +72,18 @@ def request(url: Url):
         s = ctx.wrap_socket(s, server_hostname=url.host)
 
     # Request
-    request_path = f"GET {url.path} HTTP/1.0\r\n"
-    request_host = f"Host: {url.host}\r\n\r\n"
-    print(f"{request_path}{request_host}")
-    s.send(f"{request_path}{request_host}".encode("utf8"))
+    if method == "GET":
+        request_path = f"GET {url.path} HTTP/1.0\r\n"
+        request_host = f"Host: {url.host}\r\n\r\n"
+        # print(f"{request_path}{request_host}")
+        s.send(f"{request_path}{request_host}".encode("utf8"))
+    else:
+        body = "{} {} HTTP/1.0\r\n".format(method, url.path)
+        body += "Host: {}\r\n".format(url.host)
+        content_length = len(payload.encode("utf8"))
+        body += "Content-Length: {}\r\n".format(content_length)
+        body += "\r\n" + payload
+        s.send(body.encode("utf8"))
 
     # Parse Version / Status / Explanation
     response = s.makefile("r", encoding="utf8", newline="\r\n")
@@ -117,9 +130,7 @@ def main():
 
     # Draw into window
     mybrowser = browser.Browser()
-    tokens = parse.lex(response.body)
-    nodes = parse.ParseTree().parse(tokens)
-    mybrowser.layout(nodes)
+    mybrowser.load(request_url)
     tkinter.mainloop()
 
 if __name__ == "__main__":
