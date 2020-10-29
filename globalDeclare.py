@@ -25,4 +25,5 @@ class Variables:
     "font-size": "16px",
     "color": "black"
     }
-    ADDR_START = 85 # x
+    ADDR_START = 115 # x
+    RESET_ICON = (50, 20) # x, y

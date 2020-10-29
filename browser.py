@@ -64,16 +64,18 @@ class Browser:
             self.layout(self.document.node)
 
     def handle_click(self, e):
-        self.focus = None
         if e.y < 60: # Browser chrome
             # click "back" button
             if 10 <= e.x < 35 and 10 <= e.y < 50:
                 self.go_back()
-            # click "forward" button
+            # click "refresh" button
             elif 45 <= e.x < 70 and 10 <= e.y < 50:
+                self.refresh()
+            #click "forward" button
+            elif 80 <= e.x < 105 and 10 <= e.y < 50:
                 self.go_forward()
             # click address bar
-            elif 80 <= e.x < 800 and 10 <= e.y < 50:
+            elif Variables.ADDR_START-5 <= e.x < 800 and 10 <= e.y < 50:
                 self.focus = "address bar"
                 self.address_bar = ""
                 self.render()
@@ -102,6 +104,7 @@ class Browser:
                 self.future = []
                 self.load(url)
             elif elt.tag == "button":
+                self.focus = None
                 self.submit_form(elt)
 
     def submit_form(self, elt):
@@ -123,10 +126,7 @@ class Browser:
 
         self.load(url, body)
 
-
-
     def click_input(self, elt):
-        # elt = obj.node
         elt.attributes["value"] = ""
 
     def go_back(self):
@@ -134,6 +134,9 @@ class Browser:
             self.future.append(self.history.pop())
             back = self.history.pop()
             self.load(back)
+
+    def refresh(self):
+        self.load(self.url)
 
     def go_forward(self):
         if self.future:
@@ -174,7 +177,7 @@ class Browser:
             cmd.draw(self.scroll - 60, self.canvas)
 
         # address bar
-        self.canvas.create_rectangle(80, 0, 800, 60, width=0, fill='light gray')
+        self.canvas.create_rectangle(Variables.ADDR_START-5, 0, 800, 60, width=0, fill='light gray')
         self.canvas.create_rectangle(Variables.ADDR_START, 10, 790, 50)
         
         font = tkinter.font.Font(family="Courier", size=20)
@@ -188,12 +191,24 @@ class Browser:
         else: button_color = "gray"
         self.canvas.create_rectangle(10, 10, 35, 50)
         self.canvas.create_polygon(15, 30, 30, 20, 30, 40, fill=button_color)
-        
+
+        # refresh button
+        self.canvas.create_rectangle(45, 10, 70, 50)
+        refreshpath = [
+            12,3,9,0,9,2,0,2,0,16,14,16,14,8,12,8,12,14,2,14,2,4,9,4,9,6,12,3
+        ]
+        scale = 1.2
+        for i in range(0,len(refreshpath),2):
+            refreshpath[i] = int(refreshpath[i]*scale) + Variables.RESET_ICON[0]
+            refreshpath[i+1] = int(refreshpath[i+1]*scale) + Variables.RESET_ICON[1]
+        self.canvas.create_polygon(refreshpath, fill="black")
+
         # forward button x1,y1,x2,y2
         if self.future: button_color = "black"
         else: button_color = "gray"
-        self.canvas.create_rectangle(45, 10, 70, 50)
-        self.canvas.create_polygon(50, 20, 65, 30, 50, 40, fill=button_color)
+        self.canvas.create_rectangle(80, 10, 105, 50)
+        self.canvas.create_polygon(85, 20, 100, 30, 85, 40, fill=button_color)
+        
         if self.focus == "address bar":
             w = font.measure(self.address_bar)
             self.canvas.create_line(Variables.ADDR_START+5 + w, 15, Variables.ADDR_START+5 + w, 45)
@@ -216,7 +231,8 @@ class Browser:
         else: 
             self.address_bar = url.scheme+"://"+url.host+url.path
         
-        self.history.append(url)
+        if not (self.history and self.history[-1] == url):
+            self.history.append(url)
 
         response = request(url, body)
         header, body = response.headers, response.body

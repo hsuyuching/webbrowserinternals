@@ -19,19 +19,23 @@ class InputLayout:
         self.font = tkinter.font.Font(size=size, weight=weight, slant=style)
 
     def draw(self, to):
-        x1, x2 = self.x, self.x + self.w
-        y1, y2 = self.y, self.y + self.h
-        bgcolor = "light gray" if self.node.tag == "input" else "yellow"
-        to.append(DrawRect(x1, y1, x2, y2, bgcolor))
-        
-        text = ""
         if self.node.tag == "input":
+            x1, x2 = self.x, self.x + self.w
+            y1, y2 = self.y, self.y + self.h
+            to.append(DrawRect(x1, y1, x2, y2, "light gray"))
+
             text = self.node.attributes.get("value", "")
+            color = self.node.style["color"]
+            to.append(DrawText(self.x, self.y, text, self.font, color))
         else:
             text = self.node.children[0].text
-
-        color = self.node.style["color"]
-        to.append(DrawText(self.x, self.y, text, self.font, color))
+            x1, x2 = self.x, self.x + self.font.measure(text)
+            y1, y2 = self.y, self.y + self.h
+            to.append(DrawRect(x1, y1, x2, y2, "light blue"))
+        
+            color = self.node.style["color"]
+            to.append(DrawText(self.x, self.y, text, self.font, color))
+        
 
 
 
