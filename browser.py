@@ -1,6 +1,7 @@
 import tkinter
 import layout
 import parse
+import dukpy
 
 from connect import request, stripoutUrl
 from globalDeclare import Variables
@@ -21,7 +22,6 @@ class Browser:
         self.window.bind("<Key>", self.keypress)
         self.window.bind("<Return>", self.pressenter)
         self.window.bind("<BackSpace>", self.backspace)
-        self.gif_grinFace = tkinter.PhotoImage(file='resize_griningFace.gif')
         self.history = []
         self.future = []
         self.curridx = 0
@@ -239,6 +239,13 @@ class Browser:
         tokens = parse.lex(body)
         nodes = parse.ParseTree().parse(tokens)
 
+        for script in find_scripts(nodes, []):
+            jsurl = relative_url(script, self.history[-1])
+            jsurl = stripoutUrl(jsurl)
+            res = request(jsurl)
+            header, body = res.headers, res.body
+            # print("Script returned: ", dukpy.evaljs(body))
+
         with open("browser.css") as f:
             browser_style = f.read()
             rules = CSSParser(browser_style).parse()
@@ -250,8 +257,7 @@ class Browser:
             header, body = response.headers, response.body
             rules.extend(CSSParser(body).parse())
 
-        rules.sort(key=lambda t:t[0].priority(),
-            reverse=True)
+        rules.sort(key=lambda t:t[0].priority(), reverse=True)
         style(nodes, rules, None)
         self.layout(nodes)
 
@@ -264,6 +270,15 @@ def find_links(node, lst):
     for child in node.children:
         find_links(child, lst)
     return lst
+    
+def find_scripts(node, out):
+    if not isinstance(node, ElementNode): return
+    if node.tag == "script" and \
+       "src" in node.attributes:
+        out.append(node.attributes["src"])
+    for child in node.children:
+        find_scripts(child, out)
+    return out
 
 def find_layout(x, y, tree):
     for child in reversed(tree.children):
@@ -274,7 +289,7 @@ def find_layout(x, y, tree):
         return tree
 
 def relative_url(url, current) -> str: #current: Url
-    current = current.scheme+"://"+current.host+current.path
+    current = current.scheme+"://"+current.host+":"+str(current.port)+current.path
     if "://" in url:
         return url
     elif url.startswith("/"):
