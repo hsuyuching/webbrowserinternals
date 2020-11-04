@@ -84,6 +84,7 @@ class ParseTree:
                 if not currently_open: 
                     return node
                 currently_open[-1].children.append(node)
+                
             elif tok.tag in Variables.SELF_CLOSING_TAGS:
                 node = ElementNode(tok.tag, tok.attributes, currently_open[-1])
                 currently_open[-1].children.append(node)

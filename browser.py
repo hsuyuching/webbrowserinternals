@@ -238,13 +238,7 @@ class Browser:
         header, body = response.headers, response.body
         tokens = parse.lex(body)
         nodes = parse.ParseTree().parse(tokens)
-
-        for script in find_scripts(nodes, []):
-            jsurl = relative_url(script, self.history[-1])
-            jsurl = stripoutUrl(jsurl)
-            res = request(jsurl)
-            header, body = res.headers, res.body
-            # print("Script returned: ", dukpy.evaljs(body))
+        self.nodes = nodes
 
         with open("browser.css") as f:
             browser_style = f.read()
@@ -259,7 +253,43 @@ class Browser:
 
         rules.sort(key=lambda t:t[0].priority(), reverse=True)
         style(nodes, rules, None)
+
+        for script in find_scripts(nodes, []):
+            jsurl = relative_url(script, self.history[-1])
+            jsurl = stripoutUrl(jsurl)
+            res = request(jsurl)
+            header, body = res.headers, res.body
+            # print("Script returned: ", dukpy.evaljs(body))
+        self.setup_js()
         self.layout(nodes)
+
+    def js_querySelectorAll(self, sel):
+        selector, _ = CSSParser(sel + "{").selector(0)
+        elts = find_selected(self.nodes, selector, [])
+        return [self.make_handle(elt) for elt in elts]
+
+    def setup_js(self):
+        try:
+            self.js = dukpy.JSInterpreter()
+            self.node_to_handle = {}
+            self.handle_to_node = {}
+            self.js.export_function("log", print)
+            self.js.export_function("querySelectorAll", self.js_querySelectorAll)
+            with open("runtime.js") as f:
+                self.js.evaljs(f.read())
+        except:
+            import traceback
+            traceback.print_exc()
+            raise
+
+    def make_handle(self, elt):
+        if elt not in self.node_to_handle:
+            handle = len(self.node_to_handle)
+            self.node_to_handle[elt] = handle
+            self.handle_to_node[handle] = elt
+        else:
+            handle = self.node_to_handle[elt]
+        return handle
 
 def find_links(node, lst):
     if not isinstance(node, ElementNode): return
@@ -270,7 +300,15 @@ def find_links(node, lst):
     for child in node.children:
         find_links(child, lst)
     return lst
-    
+
+def find_selected(node, sel, out):
+    if not isinstance(node, ElementNode): return
+    if sel.matches(node):
+        out.append(node)
+    for child in node.children:
+        find_selected(child, sel, out)
+    return out
+
 def find_scripts(node, out):
     if not isinstance(node, ElementNode): return
     if node.tag == "script" and \

@@ -37,8 +37,6 @@ class InputLayout:
             to.append(DrawText(self.x, self.y, text, self.font, color))
         
 
-
-
 class LineLayout:
     def __init__(self, node, parent):
         self.node = node
