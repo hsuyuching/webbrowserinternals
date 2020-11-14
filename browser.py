@@ -92,7 +92,7 @@ class Browser:
                 self.focus = obj
                 self.layout(self.document.node)
 
-            while elt and not is_link(elt) and elt.tag != "button":
+            while elt and (isinstance(elt, TextNode) or (not is_link(elt) and elt.tag != "button")):
                 elt = elt.parent
             if not elt:
                 pass
@@ -253,42 +253,58 @@ class Browser:
 
         rules.sort(key=lambda t:t[0].priority(), reverse=True)
         style(nodes, rules, None)
+        self.setup_js()
 
         for script in find_scripts(nodes, []):
             jsurl = relative_url(script, self.history[-1])
             jsurl = stripoutUrl(jsurl)
             res = request(jsurl)
             header, body = res.headers, res.body
-            # print("Script returned: ", dukpy.evaljs(body))
-        self.setup_js()
+            try:
+                print("Script returned: ", self.js_environment.evaljs(body))
+            except:
+                print("Script", script, "crashed")
         self.layout(nodes)
 
     def js_querySelectorAll(self, sel):
+        # parse the selector then find and return the matching eles.
         selector, _ = CSSParser(sel + "{").selector(0)
         elts = find_selected(self.nodes, selector, [])
         return [self.make_handle(elt) for elt in elts]
+    
+    def js_getAttribute(self, handle, attr):
+        elt = self.handle_to_node[handle]
+        return elt.attributes.get(attr, None)
 
     def setup_js(self):
         try:
-            self.js = dukpy.JSInterpreter()
             self.node_to_handle = {}
             self.handle_to_node = {}
-            self.js.export_function("log", print)
-            self.js.export_function("querySelectorAll", self.js_querySelectorAll)
+            self.js_environment = dukpy.JSInterpreter()
+            self.js_environment.export_function(
+                "log", print)
+            self.js_environment.export_function(
+                "querySelectorAll",
+                self.js_querySelectorAll
+            )
+            self.js_environment.export_function(
+                "getAttribute",
+                self.js_getAttribute
+            )
             with open("runtime.js") as f:
-                self.js.evaljs(f.read())
+                self.js_environment.evaljs(f.read())
         except:
             import traceback
             traceback.print_exc()
             raise
 
     def make_handle(self, elt):
-        if elt not in self.node_to_handle:
+        if id(elt) not in self.node_to_handle:
             handle = len(self.node_to_handle)
-            self.node_to_handle[elt] = handle
+            self.node_to_handle[id(elt)] = handle
             self.handle_to_node[handle] = elt
         else:
-            handle = self.node_to_handle[elt]
+            handle = self.node_to_handle[id(elt)]
         return handle
 
 def find_links(node, lst):
