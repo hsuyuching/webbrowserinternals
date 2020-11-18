@@ -48,22 +48,37 @@ def handle_request(method, url, headers, body):
         else:
             return show_comments()
     else:
-        return show_comments()
+        if url == '/comment.js':
+            with open("comment.js") as f:
+                return f.read()
+        elif url == '/comment.css':
+            with open("comment.css") as f: return f.read()
+        else:
+            return show_comments()
+
+def add_entry(params):
+    if 'guest' in params and len(params['guest']) <= 100:
+        ENTRIES.append(params["guest"])
+    return show_comments()
 
 def show_comments():
     out = "<!doctype html>"
+    out += "<script src=/comment.js></script>"
+    out += "<link rel='stylesheet' href='/comment.css'>"
+
+    # entries
+    for entry in ENTRIES:
+        out += "<p>" + entry + "</p>"
+    # form
     out += "<form action=add method=post>"
     out +=   "<p><input name=guest value='value'></p>"
     out +=   "<p><button>Sign the book!</button></p>"
     out += "</form>"
-    for entry in ENTRIES:
-        out += "<p>" + entry + "</p>"
-    return out
 
-def add_entry(params):
-    if 'guest' in params:
-        ENTRIES.append(params['guest'])
-    return show_comments()
+    # errors
+    out += '<p id="errors">No errors</p>'
+
+    return out
 
 def form_decode(body):
     params = {}

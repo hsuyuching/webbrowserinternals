@@ -3,6 +3,7 @@ import layout
 import parse
 import dukpy
 
+import traceback
 from connect import request, stripoutUrl
 from globalDeclare import Variables
 from layout import CSSParser, InputLayout
@@ -37,6 +38,7 @@ class Browser:
             text = self.focus.node.attributes.get("value", "")
             if text != "":
                 self.focus.node.attributes["value"] = text[:-1]
+                self.dispatch_event("change", self.focus.node)
                 self.layout(self.document.node)
                 self.render()
     
@@ -61,6 +63,7 @@ class Browser:
                 self.render()
         elif isinstance(self.focus, InputLayout):
             self.focus.node.attributes["value"] += e.char
+            self.dispatch_event("change", self.focus.node)
             self.layout(self.document.node)
 
     def handle_click(self, e):
@@ -85,7 +88,8 @@ class Browser:
             obj = find_layout(x, y, self.document)
             if not obj: return
             elt = obj.node
-
+            if elt and self.dispatch_event('click', elt): return
+            
             # press on <input>
             if is_input(elt): 
                 self.click_input(elt)
@@ -111,6 +115,7 @@ class Browser:
         while elt and elt.tag != 'form':
             elt = elt.parent
         if not elt: return
+        self.dispatch_event("submit", elt)
         inputs = find_inputs(elt, [])
         body = ""
         for input in inputs:
@@ -123,7 +128,8 @@ class Browser:
         if isinstance(self.url, str):
             self.url = stripoutUrl(self.url)
         url = relative_url(elt.attributes['action'], self.url)
-
+        
+        if self.dispatch_event("submit", elt): return
         self.load(url, body)
 
     def click_input(self, elt):
@@ -155,11 +161,10 @@ class Browser:
     def windowresize(self, e):
         Variables.WIDTH = e.width
         Variables.HEIGHT = e.height
-        self.layout(self.tree)
+        self.layout(self.nodes)
     
     def layout(self, tree):
-        self.tree = tree
-    
+        style(tree, self.rules, None)
         self.document = layout.DocumentLayout(tree)
         self.document.layout()
         self.display_list = []
@@ -254,6 +259,7 @@ class Browser:
         rules.sort(key=lambda t:t[0].priority(), reverse=True)
         style(nodes, rules, None)
         self.setup_js()
+        self.rules = rules
 
         for script in find_scripts(nodes, []):
             jsurl = relative_url(script, self.history[-1])
@@ -264,40 +270,70 @@ class Browser:
                 print("Script returned: ", self.js_environment.evaljs(body))
             except:
                 print("Script", script, "crashed")
+                traceback.print_exc()
+                raise
+        
         self.layout(nodes)
+        self.render()
 
     def js_querySelectorAll(self, sel):
-        # parse the selector then find and return the matching eles.
-        selector, _ = CSSParser(sel + "{").selector(0)
-        elts = find_selected(self.nodes, selector, [])
-        return [self.make_handle(elt) for elt in elts]
+        try:
+            # parse the selector then find and return the matching eles.
+            selector, _ = CSSParser(sel + "{").selector(0)
+            elts = find_selected(self.nodes, selector, [])
+            return [self.make_handle(elt) for elt in elts]
+        except:
+            traceback.print_exc()
+            raise
     
     def js_getAttribute(self, handle, attr):
-        elt = self.handle_to_node[handle]
-        return elt.attributes.get(attr, None)
-
-    def setup_js(self):
         try:
-            self.node_to_handle = {}
-            self.handle_to_node = {}
-            self.js_environment = dukpy.JSInterpreter()
-            self.js_environment.export_function(
-                "log", print)
-            self.js_environment.export_function(
-                "querySelectorAll",
-                self.js_querySelectorAll
-            )
-            self.js_environment.export_function(
-                "getAttribute",
-                self.js_getAttribute
-            )
-            with open("runtime.js") as f:
-                self.js_environment.evaljs(f.read())
+            elt = self.handle_to_node[handle]
+            return elt.attributes.get(attr, None)
         except:
-            import traceback
+            print("js_getAttribute error")
+            traceback.print_exc()
+            raise
+    
+    def js_innerHTML(self, handle, s):
+        try:
+            doc = parse.ParseTree().parse(parse.lex("<html><body>" + s + "</body></html>"))
+            new_nodes = doc.children[0].children
+            
+            elt = self.handle_to_node[handle]
+            elt.children = new_nodes
+            for child in elt.children:
+                child.parent = elt
+
+            style(self.nodes, self.rules, None)
+            self.layout(self.nodes)
+            self.render()
+        except:
+            print("js_innerHTML error")
             traceback.print_exc()
             raise
 
+    def setup_js(self):
+        self.node_to_handle = {}
+        self.handle_to_node = {}
+        self.js_environment = dukpy.JSInterpreter()
+        self.js_environment.export_function(
+            "log", print)
+        self.js_environment.export_function(
+            "querySelectorAll",
+            self.js_querySelectorAll
+        )
+        self.js_environment.export_function(
+            "getAttribute",
+            self.js_getAttribute
+        )
+        self.js_environment.export_function(
+            "innerHTML",
+            self.js_innerHTML
+        )
+        with open("runtime.js") as f:
+            self.js_environment.evaljs(f.read())
+    
     def make_handle(self, elt):
         if id(elt) not in self.node_to_handle:
             handle = len(self.node_to_handle)
@@ -306,6 +342,15 @@ class Browser:
         else:
             handle = self.node_to_handle[id(elt)]
         return handle
+
+    def dispatch_event(self, type, elt):
+        # print("type: ", type, "elt:", elt)
+        handle = self.make_handle(elt)
+        code = "__runHandlers({}, \"{}\")".format(handle, type)
+
+        self.js_environment.evaljs(code)
+        do_default = self.js_environment.evaljs(code)
+        return not do_default
 
 def find_links(node, lst):
     if not isinstance(node, ElementNode): return
