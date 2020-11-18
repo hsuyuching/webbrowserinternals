@@ -5,7 +5,7 @@ import dukpy
 
 import traceback
 from connect import request, stripoutUrl
-from globalDeclare import Variables
+from globalDeclare import Variables, Timer
 from layout import CSSParser, InputLayout
 from parse import TextNode, ElementNode
 
@@ -18,7 +18,7 @@ class Browser:
         self.canvas.pack(expand=True, fill="both")
         self.window.bind("<Down>", self.scrolldown)
         self.window.bind("<Up>", self.scrollup)
-        self.window.bind("<Configure>", self.windowresize)
+        # self.window.bind("<Configure>", self.windowresize)
         self.window.bind("<Button-1>", self.handle_click)
         self.window.bind("<Key>", self.keypress)
         self.window.bind("<Return>", self.pressenter)
@@ -28,6 +28,7 @@ class Browser:
         self.curridx = 0
         self.focus = None
         self.address_bar = ""
+        self.timer = Timer()
 
     def backspace(self, e):
         if self.focus == "address bar":
@@ -164,9 +165,12 @@ class Browser:
         self.layout(self.nodes)
     
     def layout(self, tree):
+        self.timer.start("Style")
         style(tree, self.rules, None)
+        self.timer.start("Layout")
         self.document = layout.DocumentLayout(tree)
         self.document.layout()
+        self.timer.start("Display list")
         self.display_list = []
         self.document.draw(self.display_list)
         self.render()
@@ -175,12 +179,14 @@ class Browser:
         # _print_tree(self.tree, "  ")
 
     def render(self):
+        self.timer.start("Rendering")
         self.canvas.delete("all")
         for cmd in self.display_list:
             if cmd.y1 > self.scroll + Variables.HEIGHT: continue
             if cmd.y2 < self.scroll: continue
             cmd.draw(self.scroll - 60, self.canvas)
 
+        self.timer.start("Chrome")
         # address bar
         self.canvas.create_rectangle(Variables.ADDR_START-5, 0, 800, 60, width=0, fill='light gray')
         self.canvas.create_rectangle(Variables.ADDR_START, 10, 790, 50)
@@ -225,11 +231,13 @@ class Browser:
             y = self.focus.y
             # add 60px to make up the address bar
             self.canvas.create_line(x, y+60, x, y + self.focus.h + 60)
+        
+        self.timer.stop()
 
 
     def load(self, url, body=None): # body: encode form for params
         self.url = url
-
+        self.timer.start("Downloading")
         if isinstance(url, str):
             self.address_bar = url
             url = stripoutUrl(url)
@@ -242,9 +250,11 @@ class Browser:
         response = request(url, body)
         header, body = response.headers, response.body
         tokens = parse.lex(body)
+        self.timer.start("Parsing HTML")
         nodes = parse.ParseTree().parse(tokens)
         self.nodes = nodes
-
+        
+        self.timer.start("Parsing CSS")
         with open("browser.css") as f:
             browser_style = f.read()
             rules = CSSParser(browser_style).parse()
@@ -258,9 +268,10 @@ class Browser:
 
         rules.sort(key=lambda t:t[0].priority(), reverse=True)
         style(nodes, rules, None)
-        self.setup_js()
         self.rules = rules
 
+        self.timer.start("Running JS")
+        self.setup_js()
         for script in find_scripts(nodes, []):
             jsurl = relative_url(script, self.history[-1])
             jsurl = stripoutUrl(jsurl)
@@ -270,11 +281,10 @@ class Browser:
                 print("Script returned: ", self.js_environment.evaljs(body))
             except:
                 print("Script", script, "crashed")
-                traceback.print_exc()
-                raise
+                # traceback.print_exc()
+                # raise
         
         self.layout(nodes)
-        self.render()
 
     def js_querySelectorAll(self, sel):
         try:
