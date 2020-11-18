@@ -52,7 +52,8 @@ def handle_request(method, url, headers, body):
             with open("comment.js") as f:
                 return f.read()
         elif url == '/comment.css':
-            with open("comment.css") as f: return f.read()
+            with open("comment.css") as f: 
+                return f.read()
         else:
             return show_comments()
 
