@@ -6,9 +6,12 @@ from globalDeclare import Variables
 class InputLayout:
     def __init__(self, node):
         self.node = node
-        self.children = []
 
-    def layout(self):
+    def position(self):
+        pass
+
+    def size(self):
+        self.children = []
         self.w = 200
         self.h = 20
 
@@ -53,38 +56,49 @@ class LineLayout:
         for child in self.children:
             child.draw(to)
 
-    def layout(self):
+    def size(self):
         # task: compute x, y, h
+        self.w = self.parent.w
         if not self.children:
-            self.w = self.parent.w
             self.h = 0
             return
         
-        self.w = self.parent.w
         # align the words along the line
-        metrics = [child.font.metrics() for child in self.children]
-        max_ascent = max([metric["ascent"] for metric in metrics])
-        max_descent = max([metric["descent"] for metric in metrics])
-        baseline = 1.2 * max_ascent + self.y
+        self.metrics = [child.font.metrics() for child in self.children]
+        self.max_ascent = max([metric["ascent"] for metric in self.metrics])
+        self.max_descent = max([metric["descent"] for metric in self.metrics])
+        self.h = 1.2 * (self.max_descent + self.max_ascent)
+ 
+        # # add all words to self.display_list with x, y, word, font
+        # cx = self.x
+        # for child in self.children:
+        #     y = baseline - child.font.metrics("ascent")
+        #     child.y = y
+        #     child.x = cx
+        #     cx += child.w + child.font.measure(" ")
 
-        # add all words to self.display_list with x, y, word, font
-        cx = self.x
-        for child in self.children:
-            y = baseline - child.font.metrics("ascent")
-            child.y = y
-            child.x = cx
+        # # reset the self.cx and self.line
+        # self.h = 1.2*max_ascent + 1.2*max_descent
+    
+    def position(self):
+        baseline = self.y + 1.2 * self.max_ascent
+        cx = 0
+        for child, metrics in zip(self.children, self.metrics):
+            child.x = self.x + cx
+            child.y = baseline - metrics["ascent"]
             cx += child.w + child.font.measure(" ")
 
-        # reset the self.cx and self.line
-        self.h = 1.2*max_ascent + 1.2*max_descent
+
 
 class TextLayout:
     def __init__(self, node, word):
         self.node = node
-        self.children = []
         self.word = word
+    def position(self):
+        pass
 
-    def layout(self):
+    def size(self):
+        self.children = []
         weight = self.node.style["font-weight"]
         style = self.node.style["font-style"]
         if style == "normal": style = "roman"
@@ -136,13 +150,13 @@ class DocumentLayout:
     def __init__(self, node):
         self.node = node
         self.parent = None
-        self.children = []
 
         self.mt = self.mr = self.mb = self.ml = -1
         self.bt = self.br = self.bb = self.bl = -1
         self.pt = self.pr = self.pb = self.pl = -1
 
-    def layout(self):
+    def size(self):
+        self.children = []
         self.mt = px(self.node.style.get("margin-top", "0px"))
         self.bt = px(self.node.style.get("border-top-width", "0px"))
         self.pt = px(self.node.style.get("padding-top", "0px"))
@@ -162,25 +176,33 @@ class DocumentLayout:
 
         self.w = Variables.WIDTH
 
+        # set the x and y from block's parent
         child = BlockLayout(self.node, self)
         child.x = self.x = 10
         child.y = self.y = 10
         self.children.append(child)
-        child.layout()
+
+        # adjust x and y in children
+        # child.layout()
+        child.size()
+        # child.position()
 
         self.h = child.h
 
+    def position(self):
+        child = self.children[0]
+        child.x = self.x = 0
+        child.y = self.y = 0
+        child.position()
+
     def draw(self, to):
         self.children[0].draw(to)
-
-
-
 
 class BlockLayout:
     def __init__(self, node, parent):
         self.node = node
         self.parent = parent
-        self.children = []
+        # self.children = []
 
         self.w = -1
         self.h = -1
@@ -189,8 +211,21 @@ class BlockLayout:
         self.mt = self.mr = self.mb = self.ml = -1
         self.bt = self.br = self.bb = self.bl = -1
         self.pt = self.pr = self.pb = self.pl = -1
+    
+    def position(self):
+        self.y += self.mt
+        self.x += self.ml
 
-    def layout(self):
+        y = self.y
+        for child in self.children:
+            child.x = self.x + self.pl + self.bl
+            child.y = y
+            child.position()
+            y += child.mt + child.h + child.mb
+
+    def size(self): # old layout method
+        self.children = []
+
         self.mt = px(self.node.style.get("margin-top", "0px"))
         self.bt = px(self.node.style.get("border-top-width", "0px"))
         self.pt = px(self.node.style.get("padding-top", "0px"))
@@ -219,15 +254,19 @@ class BlockLayout:
         - self.parent.bl - self.parent.br \
         - self.ml - self.mr
 
-        self.y += self.mt
-        self.x += self.ml
-        y = self.y
+        # self.y += self.mt
+        # self.x += self.ml
+        # y = self.y
+        # for child in self.children:
+        #     child.x = self.x + self.pl + self.pr + self.bl + self.br
+        #     child.y = y
+        #     child.layout()
+        #     y += child.h + child.mt + child.mb
+        # self.h = y - self.y
+        self.h = 0
         for child in self.children:
-            child.x = self.x + self.pl + self.pr + self.bl + self.br
-            child.y = y
-            child.layout()
-            y += child.h + child.mt + child.mb
-        self.h = y - self.y
+            child.size()
+            self.h += child.mt + child.h + child.mb
 
     def has_block_children(self):
         for child in self.node.children:
@@ -249,8 +288,7 @@ class InlineLayout:
     def __init__(self, node, parent):
         self.node = node
         self.parent = parent
-        self.children = [LineLayout(self.node, self)]
-
+        
         self.w = -1
         self.h = -1
 
@@ -258,7 +296,17 @@ class InlineLayout:
         self.bt = self.br = self.bb = self.bl = -1
         self.pt = self.pr = self.pb = self.pl = -1
 
-    def layout(self):
+    def position(self):
+        cy = self.y
+        for child in self.children:
+            child.x = self.x
+            child.y = cy
+            child.position()
+            cy += child.h
+
+    def size(self):
+        self.children = [LineLayout(self.node, self)]
+
         self.mt = px(self.node.style.get("margin-top", "0px"))
         self.bt = px(self.node.style.get("border-top-width", "0px"))
         self.pt = px(self.node.style.get("padding-top", "0px"))
@@ -277,9 +325,6 @@ class InlineLayout:
 
         self.display_list = []
 
-        self.cx = self.x
-        self.cy = self.y
-
         self.w = self.parent.w - self.parent.pl - self.parent.pr \
             - self.parent.bl - self.parent.br
 
@@ -292,10 +337,10 @@ class InlineLayout:
         self.sourceCode = False
 
         self.line = []
+
+        self.h = 0
         self.recurse(self.node)
         self.flush()
-    
-        self.h = self.cy - self.y
         self.children.pop()
 
     def font(self, node):
@@ -317,29 +362,29 @@ class InlineLayout:
                 self.input(node)
             else:
                 for child in node.children:
+                    # child.size()
+                    # self.h += child.mt + child.h + child.mb
                     self.recurse(child)
             
     def text(self, node):
         for word in node.text.split():
             child = TextLayout(node, word)
-            child.layout()
+            child.size()
             if self.children[-1].cx + child.w > self.w:
                 self.flush()
             self.children[-1].append(child)
     
     def input(self, node):
         child = InputLayout(node)
-        child.layout()
+        child.size()
         if self.children[-1].cx + child.w > self.w:
             self.flush()
         self.children[-1].append(child)
 
     def flush(self):
         child = self.children[-1]
-        child.x = self.x
-        child.y = self.cy
-        child.layout()
-        self.cy += child.h
+        child.size()
+        self.h += child.h
         self.children.append(LineLayout(self.node, self))
 
     def handle_open_tag(self, tag, attributes):

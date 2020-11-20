@@ -167,9 +167,13 @@ class Browser:
     def layout(self, tree):
         self.timer.start("Style")
         style(tree, self.rules, None)
-        self.timer.start("Layout")
+        self.timer.start("Layout (phase 1)")
         self.document = layout.DocumentLayout(tree)
-        self.document.layout()
+
+        self.document.size()
+        self.timer.start("Layout (phase 2)")
+        self.document.position()
+
         self.timer.start("Display list")
         self.display_list = []
         self.document.draw(self.display_list)
@@ -285,6 +289,7 @@ class Browser:
                 # raise
         
         self.layout(nodes)
+        # self.size(node)
 
     def js_querySelectorAll(self, sel):
         try:
