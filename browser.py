@@ -65,7 +65,8 @@ class Browser:
         elif isinstance(self.focus, InputLayout):
             self.focus.node.attributes["value"] += e.char
             self.dispatch_event("change", self.focus.node)
-            self.layout(self.document.node)
+            # self.layout(self.document.node)
+            self.reflow(self.focus)
 
     def handle_click(self, e):
         if e.y < 60: # Browser chrome
@@ -92,12 +93,12 @@ class Browser:
             if elt and self.dispatch_event('click', elt): return
             
             # press on <input>
-            if is_input(elt): 
-                self.click_input(elt)
-                self.focus = obj
-                self.layout(self.document.node)
+            # if is_input(elt): 
+            #     self.click_input(elt)
+            #     self.focus = obj
+            #     self.layout(self.document.node)
 
-            while elt and (isinstance(elt, TextNode) or (not is_link(elt) and elt.tag != "button")):
+            while elt and (isinstance(elt, TextNode) or (not is_link(elt) and elt.tag != "button" and elt.tag != "input")):
                 elt = elt.parent
             if not elt:
                 pass
@@ -108,6 +109,12 @@ class Browser:
                 url = relative_url(elt.attributes["href"], temp)
                 self.future = []
                 self.load(url)
+
+            elif elt.tag == "input":
+                elt.attributes["value"] = ""
+                self.focus = obj
+                return self.reflow(self.focus)
+
             elif elt.tag == "button":
                 self.focus = None
                 self.submit_form(elt)
@@ -169,8 +176,13 @@ class Browser:
         style(tree, self.rules, None)
         self.timer.start("Layout (phase 1)")
         self.document = layout.DocumentLayout(tree)
+        self.reflow(self.document)
 
-        self.document.size()
+    def reflow(self, obj):
+        self.timer.start("Style")
+        style(obj.node, self.rules, None)
+        self.timer.start("Layout (phase 1)")
+        obj.size()
         self.timer.start("Layout (phase 2)")
         self.document.position()
 
@@ -180,7 +192,6 @@ class Browser:
         self.render()
         self.max_y = self.document.h
 
-        # _print_tree(self.tree, "  ")
 
     def render(self):
         self.timer.start("Rendering")
@@ -319,10 +330,12 @@ class Browser:
             elt.children = new_nodes
             for child in elt.children:
                 child.parent = elt
-
+            self.timer.start("Style")
             style(self.nodes, self.rules, None)
-            self.layout(self.nodes)
-            self.render()
+            # self.layout(self.nodes)
+            self.timer.start("Layout (phase 2)")
+            self.reflow(layout_for_node(self.document, elt))
+            # self.render()
         except:
             print("js_innerHTML error")
             traceback.print_exc()
@@ -454,3 +467,10 @@ def _print_tree(tree, indent_space):
         if isinstance(tree, parse.ElementNode):   
             for child in tree.children:    
                 _print_tree(child, indent_space + '  ')
+
+def layout_for_node(tree, node):
+    if tree.node == node:
+        return tree
+    for child in tree.children:
+        out = layout_for_node(child, node)
+        if out: return out
