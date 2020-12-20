@@ -84,6 +84,7 @@ class ParseTree:
                 if not currently_open: 
                     return node
                 currently_open[-1].children.append(node)
+                
             elif tok.tag in Variables.SELF_CLOSING_TAGS:
                 node = ElementNode(tok.tag, tok.attributes, currently_open[-1])
                 currently_open[-1].children.append(node)
@@ -91,8 +92,13 @@ class ParseTree:
             elif tok.tag.startswith("!"):
                 continue
             else:
-                node = ElementNode(tok.tag, tok.attributes, currently_open[-1])
+                node = None
+                if currently_open == []:
+                    node = ElementNode(tok.tag, tok.attributes, None)
+                else:
+                    node = ElementNode(tok.tag, tok.attributes, currently_open[-1])
                 currently_open.append(node)
+
     
         while currently_open:
             node = currently_open.pop()

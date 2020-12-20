@@ -1,9 +1,11 @@
 import tkinter
 import layout
 import parse
+import dukpy
 
+import traceback
 from connect import request, stripoutUrl
-from globalDeclare import Variables
+from globalDeclare import Variables, Timer
 from layout import CSSParser, InputLayout
 from parse import TextNode, ElementNode
 
@@ -16,17 +18,17 @@ class Browser:
         self.canvas.pack(expand=True, fill="both")
         self.window.bind("<Down>", self.scrolldown)
         self.window.bind("<Up>", self.scrollup)
-        self.window.bind("<Configure>", self.windowresize)
+        # self.window.bind("<Configure>", self.windowresize)
         self.window.bind("<Button-1>", self.handle_click)
         self.window.bind("<Key>", self.keypress)
         self.window.bind("<Return>", self.pressenter)
         self.window.bind("<BackSpace>", self.backspace)
-        self.gif_grinFace = tkinter.PhotoImage(file='resize_griningFace.gif')
         self.history = []
         self.future = []
         self.curridx = 0
         self.focus = None
         self.address_bar = ""
+        self.timer = Timer()
 
     def backspace(self, e):
         if self.focus == "address bar":
@@ -37,6 +39,7 @@ class Browser:
             text = self.focus.node.attributes.get("value", "")
             if text != "":
                 self.focus.node.attributes["value"] = text[:-1]
+                self.dispatch_event("change", self.focus.node)
                 self.layout(self.document.node)
                 self.render()
     
@@ -61,7 +64,9 @@ class Browser:
                 self.render()
         elif isinstance(self.focus, InputLayout):
             self.focus.node.attributes["value"] += e.char
-            self.layout(self.document.node)
+            self.dispatch_event("change", self.focus.node)
+            # self.layout(self.document.node)
+            self.reflow(self.focus)
 
     def handle_click(self, e):
         if e.y < 60: # Browser chrome
@@ -85,14 +90,15 @@ class Browser:
             obj = find_layout(x, y, self.document)
             if not obj: return
             elt = obj.node
-
+            if elt and self.dispatch_event('click', elt): return
+            
             # press on <input>
-            if is_input(elt): 
-                self.click_input(elt)
-                self.focus = obj
-                self.layout(self.document.node)
+            # if is_input(elt): 
+            #     self.click_input(elt)
+            #     self.focus = obj
+            #     self.layout(self.document.node)
 
-            while elt and not is_link(elt) and elt.tag != "button":
+            while elt and (isinstance(elt, TextNode) or (not is_link(elt) and elt.tag != "button" and elt.tag != "input")):
                 elt = elt.parent
             if not elt:
                 pass
@@ -103,6 +109,12 @@ class Browser:
                 url = relative_url(elt.attributes["href"], temp)
                 self.future = []
                 self.load(url)
+
+            elif elt.tag == "input":
+                elt.attributes["value"] = ""
+                self.focus = obj
+                return self.reflow(self.focus)
+
             elif elt.tag == "button":
                 self.focus = None
                 self.submit_form(elt)
@@ -111,6 +123,7 @@ class Browser:
         while elt and elt.tag != 'form':
             elt = elt.parent
         if not elt: return
+        self.dispatch_event("submit", elt)
         inputs = find_inputs(elt, [])
         body = ""
         for input in inputs:
@@ -123,7 +136,8 @@ class Browser:
         if isinstance(self.url, str):
             self.url = stripoutUrl(self.url)
         url = relative_url(elt.attributes['action'], self.url)
-
+        
+        if self.dispatch_event("submit", elt): return
         self.load(url, body)
 
     def click_input(self, elt):
@@ -155,27 +169,39 @@ class Browser:
     def windowresize(self, e):
         Variables.WIDTH = e.width
         Variables.HEIGHT = e.height
-        self.layout(self.tree)
+        self.layout(self.nodes)
     
     def layout(self, tree):
-        self.tree = tree
-    
+        self.timer.start("Style")
+        style(tree, self.rules, None)
+        self.timer.start("Layout (phase 1)")
         self.document = layout.DocumentLayout(tree)
-        self.document.layout()
+        self.reflow(self.document)
+
+    def reflow(self, obj):
+        self.timer.start("Style")
+        style(obj.node, self.rules, None)
+        self.timer.start("Layout (phase 1)")
+        obj.size()
+        self.timer.start("Layout (phase 2)")
+        self.document.position()
+
+        self.timer.start("Display list")
         self.display_list = []
         self.document.draw(self.display_list)
         self.render()
         self.max_y = self.document.h
 
-        # _print_tree(self.tree, "  ")
 
     def render(self):
+        self.timer.start("Rendering")
         self.canvas.delete("all")
         for cmd in self.display_list:
             if cmd.y1 > self.scroll + Variables.HEIGHT: continue
             if cmd.y2 < self.scroll: continue
             cmd.draw(self.scroll - 60, self.canvas)
 
+        self.timer.start("Chrome")
         # address bar
         self.canvas.create_rectangle(Variables.ADDR_START-5, 0, 800, 60, width=0, fill='light gray')
         self.canvas.create_rectangle(Variables.ADDR_START, 10, 790, 50)
@@ -220,11 +246,13 @@ class Browser:
             y = self.focus.y
             # add 60px to make up the address bar
             self.canvas.create_line(x, y+60, x, y + self.focus.h + 60)
+        
+        self.timer.stop()
 
 
     def load(self, url, body=None): # body: encode form for params
         self.url = url
-
+        self.timer.start("Downloading")
         if isinstance(url, str):
             self.address_bar = url
             url = stripoutUrl(url)
@@ -237,8 +265,11 @@ class Browser:
         response = request(url, body)
         header, body = response.headers, response.body
         tokens = parse.lex(body)
+        self.timer.start("Parsing HTML")
         nodes = parse.ParseTree().parse(tokens)
-
+        self.nodes = nodes
+        
+        self.timer.start("Parsing CSS")
         with open("browser.css") as f:
             browser_style = f.read()
             rules = CSSParser(browser_style).parse()
@@ -250,10 +281,104 @@ class Browser:
             header, body = response.headers, response.body
             rules.extend(CSSParser(body).parse())
 
-        rules.sort(key=lambda t:t[0].priority(),
-            reverse=True)
+        rules.sort(key=lambda t:t[0].priority(), reverse=True)
         style(nodes, rules, None)
+        self.rules = rules
+
+        self.timer.start("Running JS")
+        self.setup_js()
+        for script in find_scripts(nodes, []):
+            jsurl = relative_url(script, self.history[-1])
+            jsurl = stripoutUrl(jsurl)
+            res = request(jsurl)
+            header, body = res.headers, res.body
+            try:
+                print("Script returned: ", self.js_environment.evaljs(body))
+            except:
+                print("Script", script, "crashed")
+                # traceback.print_exc()
+                # raise
+        
         self.layout(nodes)
+        # self.size(node)
+
+    def js_querySelectorAll(self, sel):
+        try:
+            # parse the selector then find and return the matching eles.
+            selector, _ = CSSParser(sel + "{").selector(0)
+            elts = find_selected(self.nodes, selector, [])
+            return [self.make_handle(elt) for elt in elts]
+        except:
+            traceback.print_exc()
+            raise
+    
+    def js_getAttribute(self, handle, attr):
+        try:
+            elt = self.handle_to_node[handle]
+            return elt.attributes.get(attr, None)
+        except:
+            print("js_getAttribute error")
+            traceback.print_exc()
+            raise
+    
+    def js_innerHTML(self, handle, s):
+        try:
+            doc = parse.ParseTree().parse(parse.lex("<html><body>" + s + "</body></html>"))
+            new_nodes = doc.children[0].children
+            
+            elt = self.handle_to_node[handle]
+            elt.children = new_nodes
+            for child in elt.children:
+                child.parent = elt
+            self.timer.start("Style")
+            style(self.nodes, self.rules, None)
+            # self.layout(self.nodes)
+            self.timer.start("Layout (phase 2)")
+            self.reflow(layout_for_node(self.document, elt))
+            # self.render()
+        except:
+            print("js_innerHTML error")
+            traceback.print_exc()
+            raise
+
+    def setup_js(self):
+        self.node_to_handle = {}
+        self.handle_to_node = {}
+        self.js_environment = dukpy.JSInterpreter()
+        self.js_environment.export_function(
+            "log", print)
+        self.js_environment.export_function(
+            "querySelectorAll",
+            self.js_querySelectorAll
+        )
+        self.js_environment.export_function(
+            "getAttribute",
+            self.js_getAttribute
+        )
+        self.js_environment.export_function(
+            "innerHTML",
+            self.js_innerHTML
+        )
+        with open("runtime.js") as f:
+            self.js_environment.evaljs(f.read())
+    
+    def make_handle(self, elt):
+        if id(elt) not in self.node_to_handle:
+            handle = len(self.node_to_handle)
+            self.node_to_handle[id(elt)] = handle
+            self.handle_to_node[handle] = elt
+        else:
+            handle = self.node_to_handle[id(elt)]
+        return handle
+
+    def dispatch_event(self, type, elt):
+        # print("type: ", type, "elt:", elt)
+        handle = self.make_handle(elt)
+        code = "__runHandlers({}, \"{}\")".format(handle, type)
+
+        self.js_environment.evaljs(code)
+        do_default = self.js_environment.evaljs(code)
+        return not do_default
 
 def find_links(node, lst):
     if not isinstance(node, ElementNode): return
@@ -265,6 +390,23 @@ def find_links(node, lst):
         find_links(child, lst)
     return lst
 
+def find_selected(node, sel, out):
+    if not isinstance(node, ElementNode): return
+    if sel.matches(node):
+        out.append(node)
+    for child in node.children:
+        find_selected(child, sel, out)
+    return out
+
+def find_scripts(node, out):
+    if not isinstance(node, ElementNode): return
+    if node.tag == "script" and \
+       "src" in node.attributes:
+        out.append(node.attributes["src"])
+    for child in node.children:
+        find_scripts(child, out)
+    return out
+
 def find_layout(x, y, tree):
     for child in reversed(tree.children):
         result = find_layout(x, y, child)
@@ -274,7 +416,7 @@ def find_layout(x, y, tree):
         return tree
 
 def relative_url(url, current) -> str: #current: Url
-    current = current.scheme+"://"+current.host+current.path
+    current = current.scheme+"://"+current.host+":"+str(current.port)+current.path
     if "://" in url:
         return url
     elif url.startswith("/"):
@@ -325,3 +467,10 @@ def _print_tree(tree, indent_space):
         if isinstance(tree, parse.ElementNode):   
             for child in tree.children:    
                 _print_tree(child, indent_space + '  ')
+
+def layout_for_node(tree, node):
+    if tree.node == node:
+        return tree
+    for child in tree.children:
+        out = layout_for_node(child, node)
+        if out: return out
